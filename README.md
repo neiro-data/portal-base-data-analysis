@@ -31,8 +31,12 @@ uv run base-gov contracts \
   --out data/lisboa_2025.csv
 ```
 
-The contracts CSV is rewritten after each month, so an interrupted run keeps
-whatever it already fetched.
+Both commands ingest in batches — one result page for `entities`, one calendar
+month for `contracts`. Each batch is written to its own CSV under `<out>.parts/`
+as soon as it arrives and the batches are joined into `--out` at the end, so an
+interrupted run keeps everything it fetched. Re-running resumes from the first
+missing batch; pass `--restart` to discard them and start over, or `--keep-parts`
+to leave the per-batch CSVs in place after the join.
 
 As a library:
 
