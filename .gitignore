@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+
+# Scraped output — regenerate with `uv run base-gov ...`
+data/
+
+# Claude scratch
+.claude/
+[Pp][Ll][Aa][Nn]-*.md
+[Tt][Oo]-[Dd][Oo]-*.md
+*[Hh][Aa][Nn][Dd][Oo][Ff][Ff]*.md
+claude_interaction_steps.md
