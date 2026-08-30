@@ -11,7 +11,7 @@ import typer
 
 from base_gov.client import BaseGovClient, ClientConfig
 from base_gov.export import contracts_frame, entities_frame, write_csv
-from base_gov.models import Contract
+from base_gov.models import Contract, Entity
 from base_gov.queries import month_windows
 from base_gov.scrape import entity_contracts, search_entities
 
@@ -21,6 +21,9 @@ app = typer.Typer(
 )
 
 logger = logging.getLogger("base_gov")
+
+#: Rows between CSV checkpoints; one page of results.
+CHECKPOINT_EVERY = 25
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -55,14 +58,21 @@ def entities(
     """Search `Entidades` and save the full result set as CSV.
 
     Roughly two minutes per 25-row page on a cold query, so a few hundred
-    entities is a long-running job.
+    entities is a long-running job. The CSV is rewritten every
+    `CHECKPOINT_EVERY` rows, so an interrupted run still leaves on disk
+    whatever it had already fetched.
     """
     _configure_logging(verbose)
+    collected: list[Entity] = []
     with BaseGovClient(ClientConfig(timeout=timeout)) as client:
-        rows = list(search_entities(client, text, max_items=limit))
+        for entity in search_entities(client, text, max_items=limit):
+            collected.append(entity)
+            if len(collected) % CHECKPOINT_EVERY == 0:
+                write_csv(entities_frame(collected), out)
+                logger.info("%s rows fetched (checkpointed)", len(collected))
 
-    path = write_csv(entities_frame(rows), out)
-    typer.echo(f"wrote {len(rows)} entities to {path}")
+    path = write_csv(entities_frame(collected), out)
+    typer.echo(f"wrote {len(collected)} entities to {path}")
 
 
 @app.command()
