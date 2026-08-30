@@ -189,22 +189,28 @@ class BaseGovClient:
 
     # -------------------------------------------------------------- pagination
 
-    def iter_items(
+    def iter_pages(
         self,
         *,
         search_type: str,
         query: str,
         sort: str,
         size: int | None = None,
-        max_items: int | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        """Yield every result row for a query, walking pages until exhausted.
+        start_page: int = 0,
+        rows_before: int = 0,
+    ) -> Iterator[SearchPage]:
+        """Yield result pages for a query, walking until exhausted.
 
         The server clamps `size`, so the stride comes from the first response
         rather than from what was requested. Stops on an empty page so a
         miscounted `total` cannot spin forever.
+
+        `start_page` resumes a partially completed walk, with `rows_before`
+        saying how many rows precede it. The caller knows that exactly; deriving
+        it from the stride would over-request when the resumed page is the
+        short final one.
         """
-        page = 0
+        page = start_page
         seen = 0
         total: int | None = None
 
@@ -218,15 +224,31 @@ class BaseGovClient:
             if result.is_empty:
                 return
 
+            yield result
+            seen += len(result.items)
+
+            if rows_before + seen >= total:
+                return
+            page += 1
+
+    def iter_items(
+        self,
+        *,
+        search_type: str,
+        query: str,
+        sort: str,
+        size: int | None = None,
+        max_items: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Yield every result row for a query, flattening `iter_pages`."""
+        seen = 0
+        pages = self.iter_pages(search_type=search_type, query=query, sort=sort, size=size)
+        for result in pages:
             for item in result.items:
                 yield item
                 seen += 1
                 if max_items is not None and seen >= max_items:
                     return
-
-            if seen >= total:
-                return
-            page += 1
 
 
 def _parse_results(body: str) -> SearchPage:

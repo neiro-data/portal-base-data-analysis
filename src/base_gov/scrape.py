@@ -39,6 +39,25 @@ def search_entities(
         yield Entity.from_payload(row)
 
 
+def search_entity_batches(
+    client: BaseGovClient, text: str, *, start_page: int = 0, rows_before: int = 0
+) -> Iterator[list[Entity]]:
+    """Yield entities one result page at a time, for batched ingestion.
+
+    `start_page` resumes a walk that already has batches on disk, and
+    `rows_before` is how many rows those batches already hold.
+    """
+    pages = client.iter_pages(
+        search_type=SEARCH_ENTITIES,
+        query=entities_query(text),
+        sort=SORT_ENTITIES,
+        start_page=start_page,
+        rows_before=rows_before,
+    )
+    for page in pages:
+        yield [Entity.from_payload(row) for row in page.items]
+
+
 def entity_contracts(
     client: BaseGovClient,
     *,
