@@ -38,6 +38,29 @@ interrupted run keeps everything it fetched. Re-running resumes from the first
 missing batch; pass `--restart` to discard them and start over, or `--keep-parts`
 to leave the per-batch CSVs in place after the join.
 
+### Bulk xlsx ingest (local, capped)
+
+As a faster alternative to live scraping, `data/contratos2025.xlsx` (the
+portal's own bulk export) can be analyzed locally and used to seed a
+persistent entities "database" in `data/`. Every read of that workbook is
+capped at `--rows` (default **1000**) — nothing in this project reads the
+full 66 MB file.
+
+```bash
+uv run base-gov xlsx-analyze
+uv run base-gov xlsx-analyze --municipalities-only
+uv run base-gov xlsx-entities
+```
+
+`xlsx-analyze` prints distinct adjudicante/adjudicatário counts, contract-id
+uniqueness, total EUR value, a per-`tipoContrato` breakdown, and the
+municipality row count, all from the capped read.
+
+`xlsx-entities` extracts deduplicated entities (`entity_id`/NIPC, `name`) into
+`data/entities_adjudicantes.parquet` and `data/entities_adjudicatarios.parquet`.
+Writes are upserts: re-running merges with what's already on disk and dedups
+again, so it never duplicates rows.
+
 As a library:
 
 ```python
@@ -46,12 +69,14 @@ from base_gov import BaseGovClient, entity_contracts, search_entities
 
 with BaseGovClient() as client:
     municipalities = list(search_entities(client, "Município"))
-    contracts = list(entity_contracts(
-        client,
-        contracting="500051070",
-        start=dt.date(2025, 1, 1),
-        end=dt.date(2025, 3, 31),
-    ))
+    contracts = list(
+        entity_contracts(
+            client,
+            contracting="500051070",
+            start=dt.date(2025, 1, 1),
+            end=dt.date(2025, 3, 31),
+        )
+    )
 ```
 
 ## How the portal actually works
