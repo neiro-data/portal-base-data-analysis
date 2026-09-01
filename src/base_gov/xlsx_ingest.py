@@ -21,6 +21,13 @@ ADJUDICANTE = "adjudicante"
 ADJUDICATARIOS = "adjudicatarios"
 VALUE_EUR = "precoContratual"
 CONTRACT_TYPE = "tipoContrato"
+OBJECTO = "objectoContrato"
+DESCRICAO = "descContrato"
+SIGNED_DATE = "dataCelebracaoContrato"
+PUBLISHED_DATE = "dataPublicacao"
+CPV = "CPV"
+NUTS = "NUTs"
+YEAR = "Ano"
 
 REQUIRED_COLUMNS = (CONTRACT_ID, ADJUDICANTE, ADJUDICATARIOS, VALUE_EUR, CONTRACT_TYPE)
 

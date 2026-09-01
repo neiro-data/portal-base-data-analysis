@@ -61,6 +61,30 @@ municipality row count, all from the capped read.
 Writes are upserts: re-running merges with what's already on disk and dedups
 again, so it never duplicates rows.
 
+### Bulk xlsx ingest (local, uncapped)
+
+For a full, unsampled load of `data/contratos2025.xlsx`, use
+`bin/ingest-contracts.sh` (wraps `uv run base-gov bulk-ingest`). Unlike
+`xlsx-analyze`/`xlsx-entities` above, this is the **one** path in the project
+that reads the workbook without the `--rows` cap — expect the parse to peak
+around **2–4 GB RSS** for the ~66 MB export (calamine has no lazy/streaming
+read path, so the whole sheet materializes at once).
+
+```bash
+bin/ingest-contracts.sh
+bin/ingest-contracts.sh --xlsx data/contratos2025.xlsx --out data/contracts.parquet
+bin/ingest-contracts.sh --force   # replace data/contracts.parquet instead of upserting
+```
+
+Writes `data/contracts.parquet`, upserted on `idcontrato`, and also upserts
+both entity parquet files from the full dataset (same targets as
+`xlsx-entities`). Contracts use `keep="last"`, the opposite of entities'
+`keep="first"`: BASE rows get amended after signing (fields like
+`dataFechoContrato`/`PrecoTotalEfetivo` fill in later), so the most recently
+ingested version of a given `idcontrato` wins, while an entity's first-seen
+name is treated as stable. Re-running is idempotent — height stays unchanged
+if the source workbook hasn't changed.
+
 As a library:
 
 ```python
