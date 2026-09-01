@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 
 from base_gov import analysis
+from base_gov import bulk_ingest as bulk_ingest_module
 from base_gov import entities_db as entities_db_module
 from base_gov.client import BaseGovClient, ClientConfig
 from base_gov.export import (
@@ -180,6 +181,38 @@ def xlsx_entities(
         entities_db_module.adjudicatarios(df), adjudicatarios_out
     )
     typer.echo(f"wrote {adjudicatarios_rows} adjudicatarios into {adjudicatarios_out}")
+
+
+@app.command("bulk-ingest")
+def bulk_ingest(
+    xlsx: Annotated[Path, typer.Option("--xlsx", help="Path to the contracts workbook.")] = Path(
+        "data/contratos2025.xlsx"
+    ),
+    out: Annotated[Path, typer.Option("--out", help="Destination parquet for contracts.")] = Path(
+        "data/contracts.parquet"
+    ),
+    adjudicantes_out: Annotated[
+        Path, typer.Option("--adjudicantes-out", help="Destination parquet for adjudicantes.")
+    ] = Path("data/entities_adjudicantes.parquet"),
+    adjudicatarios_out: Annotated[
+        Path, typer.Option("--adjudicatarios-out", help="Destination parquet for adjudicatarios.")
+    ] = Path("data/entities_adjudicatarios.parquet"),
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", help="Replace the existing contracts parquet instead of upserting."
+        ),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Read the full contracts workbook (no row cap) and upsert contracts and
+    both entity roles into their parquet files."""
+    _configure_logging(verbose)
+    result = bulk_ingest_module.ingest(xlsx, out, adjudicantes_out, adjudicatarios_out, force=force)
+    typer.echo(f"rows read: {result.rows_read}")
+    typer.echo(f"wrote {result.contracts_total} contracts into {out}")
+    typer.echo(f"wrote {result.adjudicantes_total} adjudicantes into {adjudicantes_out}")
+    typer.echo(f"wrote {result.adjudicatarios_total} adjudicatarios into {adjudicatarios_out}")
 
 
 @app.command()
