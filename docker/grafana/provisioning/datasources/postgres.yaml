@@ -1,0 +1,22 @@
+# Provisioned Postgres datasource. Grafana expands $VAR / ${VAR} in provisioning
+# files against its own process environment (native since Grafana 8), so
+# POSTGRES_DB and GRAFANA_DB_PASSWORD below come straight from the grafana
+# service's env in docker-compose.yml.
+apiVersion: 1
+
+datasources:
+  - name: procurement-analytics
+    uid: procurement-analytics-pg
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: ${POSTGRES_DB}
+    user: grafana_reader
+    isDefault: true
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}

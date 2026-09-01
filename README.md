@@ -134,6 +134,34 @@ The stack is local-only and not internet-facing (bound to
 read-only `grafana_reader` role with a literal placeholder password; rotate
 it before any non-local deployment.
 
+## Dashboards
+
+A Grafana service, opt-in via a Compose profile, renders the loaded
+`procurement` schema as two provisioned dashboards. It requires the Postgres
+ingest above to have already run (`make up` + `make init-db` +
+`bin/ingest-postgres.sh`) so there's data to show:
+
+```bash
+docker compose --profile dashboard up -d
+```
+
+Open `http://127.0.0.1:3000` (override the port via `GRAFANA_PORT`). Two
+dashboards are auto-provisioned, both filterable by `adjudicante` and
+`adjudicatário` selectors and by the time-range picker:
+
+- **Procurement Overview** — headline stats (total/average contract value,
+  distinct adjudicantes), contracts and contract value per day/month.
+- **Contracts** — a row-level table of contracts (objecto, descrição, preço,
+  awardees), capped at 5000 rows with a visible row count.
+
+Grafana runs with **anonymous Editor access and no login form** — anyone who
+can reach the port can read and edit dashboards. That's why the port is bound
+to `127.0.0.1` only (`docker-compose.yml`); do not deploy this setup to a
+shared or internet-facing host. `grafana_reader`'s password is the same
+literal placeholder as above (`sql/004_grafana_role.sql`); rotate it in both
+that file and `.env`'s `GRAFANA_DB_PASSWORD` together, since Grafana's
+datasource reads the latter to authenticate.
+
 ## How the portal actually works
 
 BASE publishes no API. Each search page is a server-rendered shell: the GET form

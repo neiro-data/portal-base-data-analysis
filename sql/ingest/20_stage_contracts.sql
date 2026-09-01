@@ -1,27 +1,58 @@
--- NOTE: the exact parquet field names/casing below are UNVERIFIED against a
--- real file yet. The sibling `bulk-ingest` worktree has not produced
--- data/contracts.parquet at the time this file was written; the column list
--- and casing here follow the naming used by base_gov.xlsx_ingest's
--- REQUIRED_COLUMNS plus the wider set documented in the pipeline plan.
--- Cross-check (and fix if needed) once a real contracts.parquet exists.
+-- Column list/casing below matches the real data/contracts.parquet produced
+-- by base_gov.bulk_ingest (verified 2026-09-01 against an actual file — this
+-- comment previously flagged the set as unverified before one existed).
+-- pg_parquet's COPY ... WITH (format 'parquet') requires the staging table to
+-- carry every column the parquet file has, by name and a compatible type —
+-- procurement.contracts only takes the subset it actually models; the rest
+-- (nAnuncio, TipoAnuncio, idINCM, ... below) are staged and then dropped.
+
+-- Dropped (not just truncated) first: an UNLOGGED staging table, recreated
+-- every ingest run, so a column-shape change here (like this one) takes
+-- effect without a manual `DROP TABLE` on whatever volume ran an older copy.
+DROP TABLE IF EXISTS procurement.stg_contracts;
 
 CREATE UNLOGGED TABLE IF NOT EXISTS procurement.stg_contracts (
-    "idcontrato"             bigint,
-    "adjudicante"             text,
-    "adjudicatarios"          text,
-    "objectoContrato"         text,
-    "descContrato"            text,
-    "precoContratual"         double precision,
-    "PrecoTotalEfetivo"       double precision,
-    "dataCelebracaoContrato"  date,
-    "dataPublicacao"          date,
-    "dataFechoContrato"       date,
-    "tipoContrato"            text,
-    "cpv"                     text,
-    "nuts"                    text,
-    "ano"                     integer,
-    "prazoExecucao"           integer,
-    "adjudicatarioPmes"       integer
+    "idcontrato"                bigint,
+    "nAnuncio"                  text,
+    "TipoAnuncio"               text,
+    "idINCM"                    bigint,
+    "tipoContrato"              text,
+    "idprocedimento"            bigint,
+    "tipoprocedimento"          text,
+    "objectoContrato"           text,
+    "descContrato"              text,
+    "adjudicante"               text,
+    "adjudicatarios"            text,
+    "dataPublicacao"            date,
+    "dataCelebracaoContrato"    date,
+    "precoContratual"           double precision,
+    "CPV"                       text,
+    "prazoExecucao"             bigint,
+    "LocalExecucao"             text,
+    "fundamentacao"             text,
+    "ProcedimentoCentralizado"  text,
+    "numAcordoQuadro"           bigint,
+    "DescrAcordoQuadro"         text,
+    "precoBaseProcedimento"     double precision,
+    "dataDecisaoAdjudicacao"    date,
+    "dataFechoContrato"         date,
+    "PrecoTotalEfetivo"         double precision,
+    "regime"                    text,
+    "justifNReducEscrContrato"  text,
+    "tipoFimContrato"           text,
+    "CritMateriais"             text,
+    "concorrentes"              text,
+    "linkPecasProc"             text,
+    "Observacoes"               text,
+    "ContratEcologico"          text,
+    "fundamentAjusteDireto"     text,
+    "Ano"                       bigint,
+    -- Text despite the name: values seen are 9-digit NIPCs or "-", not a
+    -- Sim/Não flag — see the NULLIF(...)::integer cast below.
+    "adjudicatarioPMEs"         text,
+    "NUTs"                      text,
+    "Lotes"                     text,
+    "TipoCriterioAdjudicacao"   text
 );
 REVOKE SELECT ON procurement.stg_contracts FROM grafana_reader;
 
@@ -29,11 +60,17 @@ TRUNCATE procurement.stg_contracts;
 COPY procurement.stg_contracts
     FROM '/parquet/contracts.parquet' WITH (format 'parquet');
 
+-- adjudicatario_pmes deliberately not populated: real "adjudicatarioPMEs"
+-- values are themselves a newline-packed list of PME awardee NIPCs (e.g.
+-- "504092502\n501683631"), not the single boolean/NIPC the column's
+-- `integer` type assumes. Left NULL rather than forced through a lossy or
+-- error-prone cast; not read by any dashboard panel. Revisit as a proper
+-- text/bridge column if this data is needed later.
 INSERT INTO procurement.contracts (
     idcontrato, adjudicante, adjudicante_nipc, adjudicante_name, adjudicatarios,
     objecto_contrato, desc_contrato, preco_contratual, preco_total_efetivo,
     data_celebracao, data_publicacao, data_fecho, tipo_contrato, cpv, nuts,
-    ano, prazo_execucao, adjudicatario_pmes
+    ano, prazo_execucao
 )
 SELECT
     "idcontrato",
@@ -52,11 +89,10 @@ SELECT
     "dataPublicacao",
     "dataFechoContrato",
     "tipoContrato",
-    "cpv",
-    "nuts",
-    "ano",
-    "prazoExecucao",
-    "adjudicatarioPmes"
+    "CPV",
+    "NUTs",
+    "Ano"::integer,
+    "prazoExecucao"::integer
 FROM procurement.stg_contracts
 ON CONFLICT (idcontrato) DO UPDATE
     SET adjudicante = EXCLUDED.adjudicante,
@@ -75,5 +111,4 @@ ON CONFLICT (idcontrato) DO UPDATE
         nuts = EXCLUDED.nuts,
         ano = EXCLUDED.ano,
         prazo_execucao = EXCLUDED.prazo_execucao,
-        adjudicatario_pmes = EXCLUDED.adjudicatario_pmes,
         updated_at = now();
