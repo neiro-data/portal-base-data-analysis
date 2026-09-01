@@ -37,7 +37,12 @@ def parse_entity_column(df: pl.DataFrame, column: str) -> pl.DataFrame:
     Falls back to the raw string as `name` (with a null `entity_id`) when a
     cell doesn't match the expected `id - name` shape.
     """
-    extracted = pl.col(column).str.extract_groups(_ENTITY_RE)
+    # `str.strip_chars()` first: a trailing "\n"/"\r\n" on the raw cell (some
+    # Excel exports embed one) defeats `$` under polars' Rust regex engine,
+    # which — unlike Python's `re` — does not treat "$" as matching just
+    # before a trailing newline. Without the strip, such a cell silently
+    # produces a null entity_id (see tests/test_analysis.py).
+    extracted = pl.col(column).str.strip_chars().str.extract_groups(_ENTITY_RE)
     return df.select(
         entity_id=extracted.struct.field("1"),
         name=pl.coalesce([extracted.struct.field("2"), pl.col(column)]),

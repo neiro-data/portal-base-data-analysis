@@ -45,6 +45,26 @@ def test_adjudicatarios_keeps_distinct_entities() -> None:
     assert set(df["entity_id"].to_list()) == {"517304660", "500113270"}
 
 
+def test_adjudicantes_strips_trailing_newline_before_matching() -> None:
+    # A trailing "\n"/"\r\n" on the raw cell (seen in real Excel exports)
+    # defeats "$" under polars' Rust regex engine, unlike Python's `re` —
+    # without stripping first, this silently produced a null entity_id.
+    df = pl.DataFrame(
+        [
+            {
+                "idcontrato": 3,
+                "adjudicante": "509521584 - Nazaré Forma - Ensino, Formação e Certificação, Lda.\r\n",
+                "adjudicatarios": "517304660 - Sítio dos Arados Lda",
+                "precoContratual": 1000.0,
+                "tipoContrato": "Aquisição de serviços",
+            }
+        ]
+    )
+    row = adjudicantes(df).row(0, named=True)
+    assert row["entity_id"] == "509521584"
+    assert row["name"] == "Nazaré Forma - Ensino, Formação e Certificação, Lda."
+
+
 def test_write_entities_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "entities_adjudicantes.parquet"
     rows = write_entities(adjudicantes(_df()), path)
