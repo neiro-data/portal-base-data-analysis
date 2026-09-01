@@ -103,6 +103,37 @@ with BaseGovClient() as client:
     )
 ```
 
+### Postgres ingestion
+
+A local Postgres 17 + [pg_parquet](https://github.com/CrunchyData/pg_parquet)
+0.5.1 Docker stack loads the `data/*.parquet` files produced above into a
+`procurement` schema for querying (`entities_adjudicantes`,
+`entities_adjudicatarios`, `contracts`, `contract_adjudicatarios`, plus
+`entities_all` / `contracts_enriched` views).
+
+```bash
+cp .env.example .env
+make build-db      # slow, compiles pg_parquet from source — first build only
+make up
+make init-db        # note: sql/00*.sql already runs automatically the first
+                     # time `make up` creates a fresh volume (via postgres's
+                     # own docker-entrypoint-initdb.d) — `make init-db` is
+                     # what re-applies it later, e.g. after a schema change,
+                     # against an already-initialised (warm) volume
+
+# once the sibling bulk-ingest worktree lands and this produces contracts.parquet:
+# uv run base-gov bulk-ingest ...
+
+bin/ingest-postgres.sh   # or: make ingest-postgres
+make psql                # inspect the loaded tables
+```
+
+`data/` is gitignored — parquet inputs live only on disk, never committed.
+The stack is local-only and not internet-facing (bound to
+`${POSTGRES_PORT:-55433}` on localhost). `sql/004_grafana_role.sql` creates a
+read-only `grafana_reader` role with a literal placeholder password; rotate
+it before any non-local deployment.
+
 ## How the portal actually works
 
 BASE publishes no API. Each search page is a server-rendered shell: the GET form

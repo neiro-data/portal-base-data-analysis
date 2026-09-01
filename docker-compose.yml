@@ -1,0 +1,35 @@
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+        PG_PARQUET_VERSION: ${PG_PARQUET_VERSION:-0.5.1}
+        PGRX_VERSION: ${PGRX_VERSION:-0.16.0}
+    image: portal-base/postgres-pg-parquet:17-0.5.1
+    container_name: pbd-postgres
+    command: postgres -c shared_preload_libraries=pg_parquet -c max_wal_size=2GB
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-base_gov}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-base_gov}
+      POSTGRES_DB: ${POSTGRES_DB:-base_gov}
+    ports:
+      - "${POSTGRES_PORT:-55433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # NOTE: the whole ./sql tree is mounted here, but only sql/00*.sql runs
+      # on init — the postgres entrypoint globs this dir non-recursively, so
+      # sql/ingest/ (a subdirectory) is skipped. Keep ingest scripts nested
+      # under sql/ingest/, never as sql/NN_*.sql, or they'll auto-run on
+      # every fresh volume init. See tests/test_sql_migrations.py.
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - ./data:/parquet:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-base_gov} -d ${POSTGRES_DB:-base_gov}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
