@@ -145,7 +145,7 @@ ingest above to have already run (`make up` + `make init-db` +
 docker compose --profile dashboard up -d
 ```
 
-Open `http://127.0.0.1:3000` (override the port via `GRAFANA_PORT`). Four
+Open `http://127.0.0.1:3001` (override the port via `GRAFANA_PORT`). Four
 dashboards are auto-provisioned, all filterable by `adjudicante` and
 `adjudicatário` selectors and by the time-range picker:
 
