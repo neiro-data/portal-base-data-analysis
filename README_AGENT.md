@@ -3,65 +3,24 @@
 Background that an agent needs to change this repository, and that a person who only wants to
 run the tool does not need. Referenced from [README.md](README.md).
 
-## How the BASE portal works
+## Where the data comes from
 
-BASE publishes no API. Each search page is a server-rendered shell. The server folds the GET
-form under `/Base4/pt/pesquisa/` into a single opaque `query` string. The page then posts that
-string to one AJAX endpoint.
+BASE publishes no API. The source is the portal's own bulk export: a person downloads
+`data/contratos2025.xlsx` by hand from base.gov.pt (there is no scripted path to it).
 
-```
-POST /Base4/pt/resultados/
-  type=search_entidades | search_contratos
-  version=109.0
-  query=adjudicante=500051070&tipo=0&tipocontrato=0&desdedatacontrato=2025-01-01&...
-  sort=+description | -publicationDate
-  page=0
-  size=25
-```
+From there the pipeline is entirely local:
 
-The response is a JavaScript object literal. The page evaluates it. Its shape is
-`{ "total": N, "items": [...] }`. In practice it parses as JSON.
+1. `bin/ingest-contracts.sh` reads the workbook uncapped and writes `data/contracts.parquet`
+   plus the two entity parquet files (adjudicantes, adjudicatarios). The `xlsx-analyze` /
+   `xlsx-entities` / `bulk-ingest` CLI commands wrap this same read, capped or uncapped.
+2. `bin/ingest-postgres.sh` loads those parquet files into the `procurement` schema in
+   PostgreSQL, which Grafana renders.
 
-### Form fields
+The uncapped read peaks near 2-4 GB RSS, because `fastexcel`/calamine materializes the whole
+sheet. There is no way to stream it in smaller pieces today.
 
-| Field | Meaning |
-| --- | --- |
-| `texto4` | The entities search box. It accepts a NIPC, a description or a country. |
-| `adjudicante` / `adjudicataria` | The contracting or contracted entity. It accepts a **NIPC or a description**. |
-| `desdedatacontrato` / `atedatacontrato` | The contract date range. |
-| `desdedatapublicacao` / `atedatapublicacao` | The publication date range. |
-| `tipo`, `tipocontrato`, `pais`, `distrito`, `concelho` | Selectors. `0` means "all". |
-
-Dates use the format of the datepicker, `yy-mm-dd`. This is ISO `YYYY-MM-DD`.
-
-There is no separate entity-id parameter. `adjudicante` is one field. The portal documents it as
-*"Pode pesquisar pelo NIPC ou descrição da entidade"*. Use the NIPC as the stable identifier: a
-name fragment matches many entities. A search result does carry an internal `id`, but that `id`
-addresses the detail page and not the contracts filter.
-
-## Measured behaviour of the server
-
-These measurements set the defaults of the client. They are the reason the client is patient and
-not fast.
-
-- **A cold query takes about 125 s.** The same query again costs about 30 s, so the backend
-  caches per query. The default timeout is 300 s, with retries and backoff.
-- **The server honours `size` only up to 25.** A larger value does not fail. It returns 20 rows
-  without a message: 25 gives 25, 100 gives 20, 400 gives 20. The paginator reads the stride
-  back from each response. It does not trust the value that it sent.
-- **Session cookies are mandatory.** A POST to `/Base4/pt/resultados/` without a previous GET of
-  a `/Base4/pt/pesquisa/` page hangs. It does not return an error. The client therefore primes a
-  session once per search form.
-- **The "Exportar resultados" button of the portal is unreliable.** Its `type=csv_entidades`
-  link carries only `sort`. In a test it ignored the active search: it exported the first 250
-  entities overall, not the 360 entities that matched "Município". This project builds its CSV
-  files from the paged JSON instead. That path has no 250-row cap and it honours the query.
-
-## Load limits
-
-The server is old and it fails under load. The client sends one request at a time. It waits
-`min_interval`, 2 s, between requests. It retries with backoff. Keep this behaviour. To reduce
-the size of a job, make the date window smaller. Do not raise the concurrency.
+*Future direction: query the source data from PostgreSQL instead of reading the parquet files
+directly in Python — not built, see [README.md — Resume](README.md#resume).*
 
 ## Security notes
 
