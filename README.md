@@ -145,14 +145,19 @@ ingest above to have already run (`make up` + `make init-db` +
 docker compose --profile dashboard up -d
 ```
 
-Open `http://127.0.0.1:3000` (override the port via `GRAFANA_PORT`). Two
-dashboards are auto-provisioned, both filterable by `adjudicante` and
+Open `http://127.0.0.1:3000` (override the port via `GRAFANA_PORT`). Four
+dashboards are auto-provisioned, all filterable by `adjudicante` and
 `adjudicatário` selectors and by the time-range picker:
 
 - **Procurement Overview** — headline stats (total/average contract value,
   distinct adjudicantes), contracts and contract value per day/month.
 - **Contracts** — a row-level table of contracts (objecto, descrição, preço,
   awardees), capped at 5000 rows with a visible row count.
+- **Procurement Overview — Municípios** / **Contracts — Municípios** — the
+  same two dashboards, unconditionally scoped to adjudicantes whose name
+  matches "Município"/"Municipio" (`v.adjudicante_name ILIKE '%munic%pio%'`
+  on every panel, plus a filtered `adjudicante` dropdown). `adjudicatário`
+  stays unscoped — a município can award to any supplier.
 
 Grafana runs with **anonymous Editor access and no login form** — anyone who
 can reach the port can read and edit dashboards. That's why the port is bound
