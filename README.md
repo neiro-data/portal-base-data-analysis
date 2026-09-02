@@ -2,18 +2,19 @@
 
 ## Resume
 
-This project retrieves public procurement data from Portugal's
+This project analyses public procurement data from Portugal's
 [BASE portal](https://www.base.gov.pt/base4). The goal is to open-source the collected data.
 
-The portal publishes no API, so the client scrapes the AJAX endpoint behind the search form. A
-second path reads the bulk workbook that the portal exports. Both paths produce files in `data/`.
-A local PostgreSQL stack loads those files and Grafana renders them.
+The portal publishes no API. The source is its own `.xlsx` bulk export, downloaded by hand,
+converted once to parquet, and queried from there. A local PostgreSQL stack loads that parquet
+into a `procurement` schema and Grafana renders it. *Future direction: query the source data from
+PostgreSQL instead of reading the parquet files directly in Python.*
 
-- **Stack:** Python 3.12, [uv](https://docs.astral.sh/uv/), httpx, polars, typer. ruff for lint
+- **Stack:** Python 3.12, [uv](https://docs.astral.sh/uv/), polars, typer. ruff for lint
   and format, mypy in strict mode for types, pytest for tests.
-- **What it does:** it exports entities and contracts to CSV, one batch at a time and resumable.
-  It ingests the bulk workbook to parquet. It loads the parquet files into a `procurement` schema
-  in PostgreSQL 17 with `pg_parquet`. It serves four provisioned Grafana dashboards.
+- **What it does:** it ingests the bulk workbook to parquet (contracts, adjudicantes,
+  adjudicatarios). It loads the parquet files into a `procurement` schema in PostgreSQL 17 with
+  `pg_parquet`. It serves four provisioned Grafana dashboards.
 - **Entry point:** `src/base_gov/cli.py` (the `base-gov` console script).
 - **Host requirements:** `uv` for the CLI and the checks. Docker and `make` for the database and
   the dashboards.
@@ -25,25 +26,14 @@ If you are an AI agent, read also [README_AGENT.md](README_AGENT.md).
 
 ```bash
 uv sync                                                            # install
-uv run base-gov entities --text "Município" --out data/mun.csv     # first scrape
 uv run base-gov xlsx-analyze                                       # summarise the workbook
 ```
 
-The scrape is slow by design. One cold query takes about 125 s. See
-[README_AGENT.md — Measured behaviour of the server](README_AGENT.md#measured-behaviour-of-the-server).
+Download `data/contratos2025.xlsx` from the BASE portal by hand first — see
+[README_AGENT.md — Where the data comes from](README_AGENT.md#where-the-data-comes-from).
 
-For every other command — the contract scrape, the bulk ingest, the database, the dashboards, and
-the development tasks — see **[scripts-guide.md](scripts-guide.md)**.
-
-## Scraping
-
-Two commands read the portal: `entities` and `contracts`. Both write in batches to
-`<out>.parts/` and join the batches at the end, so an interrupted run keeps its data. A new run
-resumes from the first missing batch.
-
-Filter on the NIPC, not on a name. The portal matches a name fragment loosely across entities.
-
-See [scripts-guide.md — Scraping](scripts-guide.md#scraping).
+For every other command — the bulk ingest, the database, the dashboards, and the development
+tasks — see **[scripts-guide.md](scripts-guide.md)**.
 
 ## Bulk ingest
 
@@ -87,7 +77,7 @@ bin/                    ingest-contracts.sh (xlsx → parquet), ingest-postgres.
 docker/                 postgres (pg_parquet build) + grafana provisioning and dashboards
 docker-compose.yml      postgres service + grafana (profile: dashboard)
 sql/                    schema, views and indexes (001-006); sql/ingest/ holds the load steps
-src/base_gov/           client, scraper, xlsx ingest, export, queries + the `base-gov` CLI
+src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + the `base-gov` CLI
 tests/                  pytest suite, no database required
 data/                   csv/, parquet/, the source workbook - gitignored
 README.md               this file - what it is and the first run

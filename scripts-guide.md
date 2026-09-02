@@ -2,36 +2,6 @@
 
 Every command in this project, grouped by target. Referenced from [README.md](README.md).
 
-## Scraping
-
-Export every entity whose NIPC, description or country matches a string. This is the scripted
-form of *Entidades → "Município" → Pesquisar*.
-
-```bash
-uv run base-gov entities --text "Município" --out data/entidades_municipio.csv
-```
-
-Collect the contracts of one entity over a date range. The client sends one request per
-calendar month. Prefer the NIPC over a name.
-
-```bash
-uv run base-gov contracts \
-  --contracting 500051070 \
-  --start 2025-01-01 --end 2025-12-31 \
-  --out data/lisboa_2025.csv
-```
-
-Both commands write in batches. `entities` uses one result page per batch. `contracts` uses one
-calendar month per batch. Each batch goes to its own CSV under `<out>.parts/` when it arrives.
-At the end the command joins the batches into `--out`. An interrupted run keeps all the data
-that it received.
-
-| Flag | Effect |
-| --- | --- |
-| (default) | A new run resumes from the first missing batch. |
-| `--restart` | Discard the batch files and start again. |
-| `--keep-parts` | Keep the per-batch CSV files after the join. |
-
 ## Bulk xlsx ingest, capped
 
 `data/contratos2025.xlsx` is the portal's own bulk export. These two commands read it locally.
@@ -138,17 +108,8 @@ make check             # lint + typecheck + test
 ## Library use
 
 ```python
-import datetime as dt
-from base_gov import BaseGovClient, entity_contracts, search_entities
+from base_gov import analysis, load_contracts
 
-with BaseGovClient() as client:
-    municipalities = list(search_entities(client, "Município"))
-    contracts = list(
-        entity_contracts(
-            client,
-            contracting="500051070",
-            start=dt.date(2025, 1, 1),
-            end=dt.date(2025, 3, 31),
-        )
-    )
+df = load_contracts("data/contratos2025.xlsx", rows=1000)
+municipalities = analysis.municipality_contracts(df)
 ```

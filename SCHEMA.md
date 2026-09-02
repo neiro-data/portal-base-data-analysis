@@ -6,13 +6,12 @@ the views that the dashboards read. Referenced from [README.md](README.md).
 ## Pipeline
 
 ```
-BASE portal (HTML + AJAX)  --scrape-->  data/*.csv
-data/contratos2025.xlsx    --bulk-ingest-->  data/*.parquet
-data/*.parquet             --pg_parquet COPY-->  procurement.*  --views-->  Grafana
+data/contratos2025.xlsx (manual download)  --bulk-ingest-->  data/*.parquet
+data/*.parquet                             --pg_parquet COPY-->  procurement.*  --views-->  Grafana
 ```
 
-The scrape path and the workbook path are independent. The PostgreSQL load reads only the
-parquet files. See [scripts-guide.md](scripts-guide.md) for the commands of each stage.
+The PostgreSQL load reads only the parquet files. See [scripts-guide.md](scripts-guide.md) for
+the commands of each stage.
 
 ## Parquet files
 
@@ -114,7 +113,6 @@ the schema afterwards. The two views of 005 need no separate grant.
 
 ## Data notes
 
-A search result from the portal is a narrow projection. Prices arrive as display strings, for
-example `"1.055.006,92 €"`. Dates arrive as `DD-MM-YYYY`. The scraper preserves both exactly as
-received, so the analysis layer keeps the parsing decisions. The full contract records live on
-the detail pages, `/Base4/pt/detalhe/?type=contratos&id=...`. This client does not read them yet.
+The bulk export is the portal's own row-per-contract workbook, so it carries the fields the
+portal chose to include rather than a full detail-page record. `xlsx_ingest.py` documents the
+observed header and the parsing decisions for prices and dates.

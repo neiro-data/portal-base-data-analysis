@@ -1,20 +1,11 @@
-"""Client and scrapers for Portugal's public procurement portal, base.gov.pt."""
+"""Load Portugal's public procurement bulk export (base.gov.pt) as parquet and query it."""
 
-from base_gov.client import BaseGovClient, BaseGovError, ClientConfig
-from base_gov.models import Contract, Entity, SearchPage
-from base_gov.queries import contracts_query, entities_query, month_windows
-from base_gov.scrape import entity_contracts, search_entities
+from base_gov import analysis, bulk_ingest, entities_db
+from base_gov.xlsx_ingest import load_contracts
 
 __all__ = [
-    "BaseGovClient",
-    "BaseGovError",
-    "ClientConfig",
-    "Contract",
-    "Entity",
-    "SearchPage",
-    "contracts_query",
-    "entities_query",
-    "entity_contracts",
-    "month_windows",
-    "search_entities",
+    "analysis",
+    "bulk_ingest",
+    "entities_db",
+    "load_contracts",
 ]
