@@ -18,7 +18,7 @@
         "sort": 1,
         "multi": true,
         "includeAll": true,
-        "allValue": "",
+        "allValue": "__ALL__",
         "current": { "text": "All", "value": "$__all" }
       },
       {
@@ -31,7 +31,7 @@
         "sort": 1,
         "multi": true,
         "includeAll": true,
-        "allValue": "",
+        "allValue": "__ALL__",
         "current": { "text": "All", "value": "$__all" }
       }
     ]
@@ -51,7 +51,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS total_contracts FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
+          "rawSql": "SELECT count(*) AS total_contracts FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
         }
       ]
     },
@@ -69,7 +69,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(v.preco_contratual),0) AS total_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
+          "rawSql": "SELECT coalesce(sum(v.preco_contratual),0) AS total_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
         }
       ]
     },
@@ -87,7 +87,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(avg(v.preco_contratual),2) AS avg_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
+          "rawSql": "SELECT round(avg(v.preco_contratual),2) AS avg_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
         }
       ]
     },
@@ -105,7 +105,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(DISTINCT v.adjudicante_id) AS distinct_adjudicantes FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
+          "rawSql": "SELECT count(DISTINCT v.adjudicante_id) AS distinct_adjudicantes FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%'"
         }
       ]
     },
@@ -120,7 +120,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, count(v.idcontrato) AS contracts FROM generate_series(date_trunc('day', $__timeFrom()::timestamptz), date_trunc('day', $__timeTo()::timestamptz), interval '1 day') gs LEFT JOIN procurement.v_contracts_enriched v ON v.celebrated_at >= gs AND v.celebrated_at < gs + interval '1 day' AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, count(v.idcontrato) AS contracts FROM generate_series(date_trunc('day', $__timeFrom()::timestamptz), date_trunc('day', $__timeTo()::timestamptz), interval '1 day') gs LEFT JOIN procurement.v_contracts_enriched v ON v.celebrated_at >= gs AND v.celebrated_at < gs + interval '1 day' AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -135,7 +135,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, count(*) AS contracts FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, count(*) AS contracts FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY 1 ORDER BY 1"
         }
       ]
     },
@@ -150,7 +150,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, coalesce(sum(v.preco_contratual),0) AS contract_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, coalesce(sum(v.preco_contratual),0) AS contract_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY 1 ORDER BY 1"
         }
       ]
     },
@@ -169,7 +169,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.adjudicante_name AS adjudicante, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY v.adjudicante_name ORDER BY total_value DESC LIMIT 10"
+          "rawSql": "SELECT v.adjudicante_name AS adjudicante, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' GROUP BY v.adjudicante_name ORDER BY total_value DESC LIMIT 10"
         }
       ]
     }
