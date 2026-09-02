@@ -1,4 +1,5 @@
--- Idempotent: safe to re-run against a warm volume (CREATE OR REPLACE VIEW).
+-- Idempotent: safe to re-run against a warm volume (DROP VIEW IF EXISTS +
+-- CREATE VIEW / CREATE OR REPLACE VIEW).
 --
 -- Dashboard-support views for the `dashboards` worktree's Grafana panels.
 -- Depends on 002_schema.sql (procurement.contracts, contract_adjudicatarios)
@@ -12,9 +13,18 @@
 -- this schema afterwards, including these two.
 
 -- One row per contract, the single surface every dashboard panel reads.
--- Casts data_celebracao/data_publicacao to timestamptz once here so no panel
--- SQL needs its own `::timestamptz` for $__timeFilter().
-CREATE OR REPLACE VIEW procurement.v_contracts_enriched AS
+-- Casts data_celebracao/data_publicacao to timestamp (not timestamptz) once
+-- here so no panel SQL needs its own cast for $__timeFilter(). `date::timestamp`
+-- is IMMUTABLE (unlike `date::timestamptz`, which is only STABLE since it
+-- depends on the session timezone) so 006's matching expression indexes are
+-- usable by the planner; the source columns are plain calendar dates anyway,
+-- so no timezone semantics are lost.
+--
+-- CREATE OR REPLACE VIEW cannot change an existing column's data type, so the
+-- DROP below is required before recreating with the new (timestamp) type.
+DROP VIEW IF EXISTS procurement.v_contracts_enriched;
+
+CREATE VIEW procurement.v_contracts_enriched AS
 SELECT
     c.idcontrato,
     c.adjudicante_nipc                                   AS adjudicante_id,
@@ -22,8 +32,8 @@ SELECT
     c.objecto_contrato,
     c.desc_contrato,
     c.preco_contratual,
-    c.data_celebracao::timestamptz                       AS celebrated_at,
-    c.data_publicacao::timestamptz                       AS published_at,
+    c.data_celebracao::timestamp                         AS celebrated_at,
+    c.data_publicacao::timestamp                         AS published_at,
     c.tipo_contrato,
     c.cpv,
     c.nuts,
@@ -32,8 +42,9 @@ FROM procurement.contracts c;
 
 COMMENT ON VIEW procurement.v_contracts_enriched IS
     'One row per contract with adjudicante_id/adjudicante_name resolved and '
-    'celebrated_at/published_at cast to timestamptz for $__timeFilter(); the '
-    'single surface every dashboard panel reads.';
+    'celebrated_at/published_at cast to timestamp (IMMUTABLE, index-usable; '
+    'source columns are plain dates) for $__timeFilter(); the single surface '
+    'every dashboard panel reads.';
 
 -- Bridge surface, one row per (contract, awardee). Thin passthrough over
 -- procurement.contract_adjudicatarios, which already carries the awardee's
