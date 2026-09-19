@@ -93,5 +93,8 @@ README_AGENT.md         portal behaviour, load limits, security notes
 directly (no database needed): the raw ingested dataframe, the column-selection rationale for the
 cleaned frame, an adjudicante fuzzy-name-duplicate pass, contract time-series and a single-contract
 lifecycle walkthrough, and a set of database/indexing improvement suggestions grounded in what the
-data actually shows. Needs the `jupyter`/`rapidfuzz`/`matplotlib` dev deps (`uv sync`), and
+data actually shows. Six focused notebooks sit beside it (ajuste direto, municipio, municipio vs
+ajuste direto, concurso publico, consulta previa, procedures comparison). They key entities by
+NIPC (`base_gov.entities`), drop contracts under €10 and use `base_gov.stats`. Needs the
+`jupyter`/`matplotlib` dev deps (`uv sync`; `rapidfuzz` is a runtime dep), and
 `data/contracts.parquet` + the two entity parquet files already ingested (see Bulk ingest above).
