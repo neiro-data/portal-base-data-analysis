@@ -76,6 +76,7 @@ Full table and view reference, the migration list, and the pipeline are in **[SC
 bin/                    ingest-contracts.sh (xlsx → parquet), ingest-postgres.sh (parquet → PostgreSQL)
 docker/                 postgres (pg_parquet build) + grafana provisioning and dashboards
 docker-compose.yml      postgres service + grafana (profile: dashboard)
+notebooks/              exploratory analysis notebooks, run over the parquet files directly
 sql/                    schema, views and indexes (001-006); sql/ingest/ holds the load steps
 src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + the `base-gov` CLI
 tests/                  pytest suite, no database required
@@ -85,3 +86,12 @@ scripts-guide.md        every command, grouped by target
 SCHEMA.md               the data model reference
 README_AGENT.md         portal behaviour, load limits, security notes
 ```
+
+## Analysis notebook
+
+`notebooks/procurement_analysis.ipynb` is a full exploratory analysis over `data/*.parquet`
+directly (no database needed): the raw ingested dataframe, the column-selection rationale for the
+cleaned frame, an adjudicante fuzzy-name-duplicate pass, contract time-series and a single-contract
+lifecycle walkthrough, and a set of database/indexing improvement suggestions grounded in what the
+data actually shows. Needs the `jupyter`/`rapidfuzz`/`matplotlib` dev deps (`uv sync`), and
+`data/contracts.parquet` + the two entity parquet files already ingested (see Bulk ingest above).
