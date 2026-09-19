@@ -155,3 +155,19 @@ def test_value_per_day_and_impact() -> None:
     kept = df.filter(pl.col("preco_contratual") >= 10)
     imp = value_impact(df, kept)
     assert imp.filter(pl.col("metric") == "n_contracts")["change"].item() == -1.0
+
+
+def test_filter_min_value_uses_absolute_value() -> None:
+    from base_gov.stats import filter_min_value
+
+    df = pl.DataFrame({"preco_contratual": [-500.0, -5.0, 0.0, 9.99, 10.0, 250.0]})
+    assert filter_min_value(df)["preco_contratual"].to_list() == [-500.0, 10.0, 250.0]
+
+
+def test_is_municipio_expr_accent_and_case() -> None:
+    from base_gov.contracts import is_municipio_expr
+
+    df = pl.DataFrame(
+        {"adjudicante_name": ["Município de Gouveia", "MUNICIPIO do Porto", "Câmara Municipal X"]}
+    )
+    assert df.select(is_municipio_expr().alias("m"))["m"].to_list() == [True, True, False]

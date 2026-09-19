@@ -6,6 +6,13 @@ MIN_VALUE = 10.0  # contracts priced below this (€) are disregarded in the ana
 MAX_DAYS = 3650  # prazoExecucao above ~10 years is treated as a data-entry error
 
 
+def filter_min_value(
+    df: pl.DataFrame, price: str = "preco_contratual", min_value: float = MIN_VALUE
+) -> pl.DataFrame:
+    """Drop contracts with |value| below ``min_value`` (negative prices count by magnitude)."""
+    return df.filter(pl.col(price).abs() >= min_value)
+
+
 def value_per_day(price: str = "preco_contratual", days: str = "prazo_execucao") -> pl.Expr:
     """Contract value per execution day; null unless 1 <= days <= MAX_DAYS."""
     return (
