@@ -213,6 +213,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastexcel" },
     { name = "polars" },
+    { name = "rapidfuzz" },
     { name = "typer" },
 ]
 
@@ -225,7 +226,6 @@ dev = [
     { name = "nbconvert" },
     { name = "nbformat" },
     { name = "pytest" },
-    { name = "rapidfuzz" },
     { name = "ruff" },
     { name = "xlsxwriter" },
 ]
@@ -234,6 +234,7 @@ dev = [
 requires-dist = [
     { name = "fastexcel", specifier = ">=0.21.0" },
     { name = "polars", specifier = ">=1.44.1" },
+    { name = "rapidfuzz", specifier = ">=3.14.6" },
     { name = "typer", specifier = ">=0.27.2" },
 ]
 
@@ -246,7 +247,6 @@ dev = [
     { name = "nbconvert", specifier = ">=7.17.1" },
     { name = "nbformat", specifier = ">=5.11.1" },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "rapidfuzz", specifier = ">=3.14.6" },
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "xlsxwriter", specifier = ">=3.2.9" },
 ]
