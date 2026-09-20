@@ -1,58 +1,46 @@
--- Column list/casing below matches the real data/contracts.parquet produced
--- by base_gov.bulk_ingest (verified 2026-09-01 against an actual file — this
--- comment previously flagged the set as unverified before one existed).
--- pg_parquet's COPY ... WITH (format 'parquet') requires the staging table to
--- carry every column the parquet file has, by name and a compatible type —
--- procurement.contracts only takes the subset it actually models; the rest
--- (nAnuncio, TipoAnuncio, idINCM, ... below) are staged and then dropped.
+-- Column list/casing below is the treated schema, base_gov.transform.TREATED_COLUMNS
+-- (data/contracts.parquet), snake_case. pg_parquet's COPY ... WITH (format 'parquet')
+-- requires the staging table to carry every parquet column by name and a compatible
+-- type; tests/test_sql_migrations.py checks parity with TREATED_COLUMNS.
+-- procurement.contracts only models a subset, the rest are staged and dropped.
 
 -- Dropped (not just truncated) first: an UNLOGGED staging table, recreated
--- every ingest run, so a column-shape change here (like this one) takes
--- effect without a manual `DROP TABLE` on whatever volume ran an older copy.
+-- every ingest run, so a column-shape change takes effect without a manual
+-- `DROP TABLE` on a warm volume that ran an older copy.
 DROP TABLE IF EXISTS procurement.stg_contracts;
 
 CREATE UNLOGGED TABLE IF NOT EXISTS procurement.stg_contracts (
     "idcontrato"                bigint,
-    "nAnuncio"                  text,
-    "TipoAnuncio"               text,
-    "idINCM"                    bigint,
-    "tipoContrato"              text,
-    "idprocedimento"            bigint,
-    "tipoprocedimento"          text,
-    "objectoContrato"           text,
-    "descContrato"              text,
+    "ano"                       integer,
     "adjudicante"               text,
+    "adjudicante_nipc"          text,
+    "adjudicante_name"          text,
+    "adjudicante_key"           text,
+    "adjudicante_key_source"    text,
     "adjudicatarios"            text,
-    "dataPublicacao"            date,
-    "dataCelebracaoContrato"    date,
-    "precoContratual"           double precision,
-    "CPV"                       text,
-    "prazoExecucao"             bigint,
-    "LocalExecucao"             text,
-    "fundamentacao"             text,
-    "ProcedimentoCentralizado"  text,
-    "numAcordoQuadro"           bigint,
-    "DescrAcordoQuadro"         text,
-    "precoBaseProcedimento"     double precision,
-    "dataDecisaoAdjudicacao"    date,
-    "dataFechoContrato"         date,
-    "PrecoTotalEfetivo"         double precision,
-    "regime"                    text,
-    "justifNReducEscrContrato"  text,
-    "tipoFimContrato"           text,
-    "CritMateriais"             text,
+    "objecto_contrato"          text,
+    "desc_contrato"             text,
+    "preco_contratual"          double precision,
+    "preco_total_efetivo"       double precision,
+    "preco_base_procedimento"   double precision,
+    "prazo_execucao"            bigint,
+    "valor_por_dia"             double precision,
+    "data_celebracao"           date,
+    "data_publicacao"           date,
+    "data_fecho"                date,
+    "tipo_contrato"             text,
+    "tipo_procedimento"         text,
+    "fundament_ajuste_direto"   text,
+    "cpv"                       text,
+    "nuts"                      text,
     "concorrentes"              text,
-    "linkPecasProc"             text,
-    "Observacoes"               text,
-    "ContratEcologico"          text,
-    "fundamentAjusteDireto"     text,
-    "Ano"                       bigint,
-    -- Text despite the name: values seen are 9-digit NIPCs or "-", not a
-    -- Sim/Não flag — see the NULLIF(...)::integer cast below.
-    "adjudicatarioPMEs"         text,
-    "NUTs"                      text,
-    "Lotes"                     text,
-    "TipoCriterioAdjudicacao"   text
+    "TipoCriterioAdjudicacao"   text,
+    "n_concorrentes"            bigint,
+    "is_municipio"              boolean,
+    "is_below_min_value"        boolean,
+    "row_hash"                  bigint,
+    "first_ingested_at"         timestamptz,
+    "updated_at"                timestamptz
 );
 REVOKE SELECT ON procurement.stg_contracts FROM grafana_reader;
 
@@ -61,38 +49,48 @@ COPY procurement.stg_contracts
     FROM '/parquet/contracts.parquet' WITH (format 'parquet');
 
 -- adjudicatario_pmes deliberately not populated: real "adjudicatarioPMEs"
--- values are themselves a newline-packed list of PME awardee NIPCs (e.g.
--- "504092502\n501683631"), not the single boolean/NIPC the column's
--- `integer` type assumes. Left NULL rather than forced through a lossy or
--- error-prone cast; not read by any dashboard panel. Revisit as a proper
--- text/bridge column if this data is needed later.
+-- values are themselves a newline-packed list of PME awardee NIPCs, not the
+-- single boolean/NIPC the column's `integer` type assumes. Left NULL.
+--
+-- The flag is_below_min_value never filters this load: every treated row is
+-- inserted. first_ingested_at is set on insert only, never in the SET list.
+-- The update fires only when the content hash or the flag changed.
 INSERT INTO procurement.contracts (
     idcontrato, adjudicante, adjudicante_nipc, adjudicante_name, adjudicatarios,
     objecto_contrato, desc_contrato, preco_contratual, preco_total_efetivo,
-    data_celebracao, data_publicacao, data_fecho, tipo_contrato, cpv, nuts,
-    ano, prazo_execucao
+    preco_base_procedimento, data_celebracao, data_publicacao, data_fecho,
+    tipo_contrato, tipo_procedimento, fundament_ajuste_direto, cpv, nuts,
+    ano, prazo_execucao, n_concorrentes, valor_por_dia,
+    is_municipio, is_below_min_value, row_hash, first_ingested_at, updated_at
 )
 SELECT
     "idcontrato",
     "adjudicante",
-    -- 9-digit NIPC, matching the bridge table's entity_id pattern in
-    -- 30_rebuild_bridge.sql — kept consistent so contracts_enriched's join
-    -- on entity_id = adjudicante_nipc doesn't silently miss rows.
-    (regexp_match("adjudicante", '^(\d{9})'))[1],
-    trim(regexp_replace("adjudicante", '^\d+\s*', '')),
+    "adjudicante_nipc",
+    "adjudicante_name",
     "adjudicatarios",
-    "objectoContrato",
-    "descContrato",
-    "precoContratual"::numeric(18, 2),
-    "PrecoTotalEfetivo"::numeric(18, 2),
-    "dataCelebracaoContrato",
-    "dataPublicacao",
-    "dataFechoContrato",
-    "tipoContrato",
-    "CPV",
-    "NUTs",
-    "Ano"::integer,
-    "prazoExecucao"::integer
+    "objecto_contrato",
+    "desc_contrato",
+    "preco_contratual"::numeric(18, 2),
+    "preco_total_efetivo"::numeric(18, 2),
+    "preco_base_procedimento"::numeric(18, 2),
+    "data_celebracao",
+    "data_publicacao",
+    "data_fecho",
+    "tipo_contrato",
+    "tipo_procedimento",
+    "fundament_ajuste_direto",
+    "cpv",
+    "nuts",
+    "ano",
+    "prazo_execucao"::integer,
+    "n_concorrentes"::integer,
+    "valor_por_dia"::numeric(18, 2),
+    coalesce("is_municipio", false),
+    coalesce("is_below_min_value", false),
+    "row_hash",
+    "first_ingested_at",
+    "updated_at"
 FROM procurement.stg_contracts
 ON CONFLICT (idcontrato) DO UPDATE
     SET adjudicante = EXCLUDED.adjudicante,
@@ -103,12 +101,22 @@ ON CONFLICT (idcontrato) DO UPDATE
         desc_contrato = EXCLUDED.desc_contrato,
         preco_contratual = EXCLUDED.preco_contratual,
         preco_total_efetivo = EXCLUDED.preco_total_efetivo,
+        preco_base_procedimento = EXCLUDED.preco_base_procedimento,
         data_celebracao = EXCLUDED.data_celebracao,
         data_publicacao = EXCLUDED.data_publicacao,
         data_fecho = EXCLUDED.data_fecho,
         tipo_contrato = EXCLUDED.tipo_contrato,
+        tipo_procedimento = EXCLUDED.tipo_procedimento,
+        fundament_ajuste_direto = EXCLUDED.fundament_ajuste_direto,
         cpv = EXCLUDED.cpv,
         nuts = EXCLUDED.nuts,
         ano = EXCLUDED.ano,
         prazo_execucao = EXCLUDED.prazo_execucao,
-        updated_at = now();
+        n_concorrentes = EXCLUDED.n_concorrentes,
+        valor_por_dia = EXCLUDED.valor_por_dia,
+        is_municipio = EXCLUDED.is_municipio,
+        is_below_min_value = EXCLUDED.is_below_min_value,
+        row_hash = EXCLUDED.row_hash,
+        updated_at = EXCLUDED.updated_at
+    WHERE procurement.contracts.row_hash IS DISTINCT FROM EXCLUDED.row_hash
+       OR procurement.contracts.is_below_min_value IS DISTINCT FROM EXCLUDED.is_below_min_value;

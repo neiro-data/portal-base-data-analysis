@@ -22,6 +22,8 @@
 --
 -- CREATE OR REPLACE VIEW cannot change an existing column's data type, so the
 -- DROP below is required before recreating with the new (timestamp) type.
+-- v_contracts_material depends on v_contracts_enriched, so it is dropped first.
+DROP VIEW IF EXISTS procurement.v_contracts_material;
 DROP VIEW IF EXISTS procurement.v_contracts_enriched;
 
 CREATE VIEW procurement.v_contracts_enriched AS
@@ -37,7 +39,13 @@ SELECT
     c.tipo_contrato,
     c.cpv,
     c.nuts,
-    c.ano
+    c.ano,
+    c.is_municipio,
+    c.is_below_min_value,
+    c.tipo_procedimento,
+    c.n_concorrentes,
+    c.first_ingested_at,
+    c.updated_at
 FROM procurement.contracts c;
 
 COMMENT ON VIEW procurement.v_contracts_enriched IS
@@ -45,6 +53,15 @@ COMMENT ON VIEW procurement.v_contracts_enriched IS
     'celebrated_at/published_at cast to timestamp (IMMUTABLE, index-usable; '
     'source columns are plain dates) for $__timeFilter(); the single surface '
     'every dashboard panel reads.';
+
+-- Default-exclusion surface: what the notebooks analyse and every dashboard panel reads.
+-- v_contracts_enriched stays unfiltered so "what did we exclude?" is answerable in SQL.
+CREATE OR REPLACE VIEW procurement.v_contracts_material AS
+SELECT * FROM procurement.v_contracts_enriched WHERE NOT is_below_min_value;
+
+COMMENT ON VIEW procurement.v_contracts_material IS
+    'v_contracts_enriched minus contracts flagged is_below_min_value (the EUR 10 rule); '
+    'the surface every dashboard panel reads.';
 
 -- Bridge surface, one row per (contract, awardee). Thin passthrough over
 -- procurement.contract_adjudicatarios, which already carries the awardee's

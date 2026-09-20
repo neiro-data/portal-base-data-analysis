@@ -5,12 +5,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import polars as pl
 import pytest
 
+from base_gov.transform import TREATED_COLUMNS, TREATED_SCHEMA
 from base_gov.xlsx_ingest import REQUIRED_COLUMNS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SQL_DIR = REPO_ROOT / "sql"
+DASHBOARD_DIR = REPO_ROOT / "docker" / "grafana" / "dashboards"
+STAGE_SQL = SQL_DIR / "ingest" / "20_stage_contracts.sql"
 
 ALL_SQL_FILES = sorted(SQL_DIR.rglob("*.sql"))
 MIGRATION_FILES = sorted(SQL_DIR.glob("00*.sql"))
@@ -41,8 +45,11 @@ def test_create_index_is_idempotent(path: Path) -> None:
 
 @pytest.mark.parametrize("path", MIGRATION_FILES, ids=lambda p: str(p.relative_to(REPO_ROOT)))
 def test_create_view_uses_or_replace(path: Path) -> None:
-    text = path.read_text()
-    for match in re.finditer(r"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW", text, re.IGNORECASE):
+    text = "\n".join(line.split("--", 1)[0] for line in path.read_text().splitlines())
+    for match in re.finditer(r"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(\S+)", text, re.IGNORECASE):
+        # A plain CREATE VIEW is allowed only right after DROP VIEW IF EXISTS of the same view.
+        if re.search(rf"DROP\s+VIEW\s+IF\s+EXISTS\s+{re.escape(match.group(1))}\s*;", text, re.I):
+            continue
         assert "OR REPLACE" in match.group(0).upper(), (
             f"{path.name}: CREATE VIEW statement missing OR REPLACE: {match.group(0)!r}"
         )
@@ -112,8 +119,8 @@ def test_staging_table_covers_xlsx_required_columns() -> None:
         "idcontrato": "idcontrato",
         "adjudicante": "adjudicante",
         "adjudicatarios": "adjudicatarios",
-        "precoContratual": "precoContratual",
-        "tipoContrato": "tipoContrato",
+        "precoContratual": "preco_contratual",
+        "tipoContrato": "tipo_contrato",
     }
     for required in REQUIRED_COLUMNS:
         staged_name = name_map[required]
@@ -121,3 +128,131 @@ def test_staging_table_covers_xlsx_required_columns() -> None:
             f"xlsx_ingest.REQUIRED_COLUMNS entry {required!r} has no matching "
             f"staging column {staged_name!r} in sql/ingest/20_stage_contracts.sql"
         )
+
+
+def _sql_code(path: Path) -> str:
+    """File text with `--` comments stripped, so prose does not trip the greps."""
+    return "\n".join(line.split("--", 1)[0] for line in path.read_text().splitlines())
+
+
+def test_migration_sequence_has_no_gap() -> None:
+    numbers = [int(p.name[:3]) for p in MIGRATION_FILES]
+    assert numbers == list(range(1, len(numbers) + 1))
+    assert (SQL_DIR / "007_ingestion_metadata.sql").exists()
+
+
+def test_ingest_scripts_are_10_20_30() -> None:
+    assert [p.name[:2] for p in sorted((SQL_DIR / "ingest").glob("*.sql"))] == ["10", "20", "30"]
+
+
+def test_007_is_guarded_rename() -> None:
+    text = (SQL_DIR / "007_ingestion_metadata.sql").read_text()
+    assert re.search(r"IF\s+EXISTS\s*\(\s*SELECT.*?information_schema\.columns", text, re.I | re.S)
+    assert "RENAME COLUMN ingested_at TO first_ingested_at" in text
+    assert "ADD COLUMN IF NOT EXISTS" in text
+    assert "DEFAULT now()" not in text
+
+
+def test_staging_columns_match_treated_columns() -> None:
+    staged = _staging_columns()
+    assert len(staged) == len(set(staged))
+    assert set(staged) == set(TREATED_COLUMNS)
+
+
+def test_row_hash_is_signed_int64() -> None:
+    # postgres bigint is signed; UInt64 would overflow COPY from parquet.
+    assert TREATED_SCHEMA["row_hash"] == pl.Int64
+
+
+def test_stage_has_no_sql_side_adjudicante_parsing_or_blind_updated_at() -> None:
+    code = _sql_code(STAGE_SQL)
+    assert not re.search(r"regexp_match\s*\([^)]*adjudicante", code, re.I)
+    assert not re.search(r"updated_at\s*=\s*now\(\)", code, re.I)
+
+
+def test_stage_flag_never_filters_the_load_and_never_deletes() -> None:
+    code = _sql_code(STAGE_SQL)
+    assert not re.search(r"\bDELETE\b", code, re.I)
+    select_part = re.search(r"\bINSERT\s+INTO\b.*?\bSELECT\b(.*?)ON\s+CONFLICT", code, re.I | re.S)
+    assert select_part is not None
+    assert not re.search(r"\bWHERE\b", select_part.group(1), re.I)
+
+
+def test_first_ingested_at_not_in_conflict_set() -> None:
+    code = _sql_code(STAGE_SQL)
+    match = re.search(r"DO\s+UPDATE\s+SET(.*?)(?:\bWHERE\b|;)", code, re.I | re.S)
+    assert match is not None
+    assert "first_ingested_at" not in match.group(1)
+    assert re.search(r"row_hash\s+IS\s+DISTINCT\s+FROM", code, re.I)
+
+
+def test_material_view_defined_over_enriched() -> None:
+    text = (SQL_DIR / "005_procurement_dashboard_views.sql").read_text()
+    assert re.search(
+        r"CREATE OR REPLACE VIEW procurement\.v_contracts_material AS\s+"
+        r"SELECT \* FROM procurement\.v_contracts_enriched\s+WHERE NOT is_below_min_value",
+        text,
+    )
+    enriched = re.search(r"CREATE VIEW procurement\.v_contracts_enriched AS(.*?);", text, re.S)
+    assert enriched is not None
+    assert "WHERE" not in enriched.group(1)
+
+
+DASHBOARD_FILES = sorted(DASHBOARD_DIR.glob("*.json"))
+
+
+def test_dashboards_found() -> None:
+    assert len(DASHBOARD_FILES) == 4
+
+
+@pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
+def test_dashboard_has_no_municipio_ilike(path: Path) -> None:
+    assert not re.search(r"ILIKE\s+'%munic%pio%'", path.read_text(), re.I)
+
+
+@pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
+def test_dashboard_reads_material_view_only(path: Path) -> None:
+    text = path.read_text()
+    assert "v_contracts_enriched" not in text
+    assert "v_contracts_material" in text
+
+
+def test_002_carries_guarded_rename() -> None:
+    text = (SQL_DIR / "002_schema.sql").read_text()
+    assert re.search(r"IF\s+EXISTS\s*\(\s*SELECT.*?information_schema\.columns", text, re.I | re.S)
+    assert "RENAME COLUMN ingested_at TO first_ingested_at" in text
+
+
+def test_003_rebuilds_contracts_enriched_after_002_column_changes() -> None:
+    code = _sql_code(SQL_DIR / "003_views.sql")
+    drop = re.search(r"DROP\s+VIEW\s+IF\s+EXISTS\s+procurement\.contracts_enriched\s*;", code, re.I)
+    create = re.search(r"CREATE\s+VIEW\s+procurement\.contracts_enriched\b", code, re.I)
+    assert drop is not None
+    assert create is not None
+    assert drop.start() < create.start()
+
+
+@pytest.mark.parametrize(
+    "path", [SQL_DIR / "002_schema.sql", SQL_DIR / "007_ingestion_metadata.sql"]
+)
+def test_material_index_matches_panel_cast(path: Path) -> None:
+    code = _sql_code(path)
+    assert re.search(
+        r"idx_contracts_data_celebracao_material\s+ON\s+procurement\.contracts\s*"
+        r"\(\(data_celebracao::timestamp\)\)\s+WHERE\s+NOT\s+is_below_min_value",
+        code,
+        re.I,
+    )
+
+
+@pytest.mark.parametrize("name", ["overview-municipios.json", "contracts-table-municipios.json"])
+def test_municipios_dashboards_filter_on_is_municipio(name: str) -> None:
+    assert "is_municipio" in (DASHBOARD_DIR / name).read_text()
+
+
+def test_overview_has_freshness_and_excluded_panels() -> None:
+    import json
+
+    panels = json.loads((DASHBOARD_DIR / "overview.json").read_text())["panels"]
+    titles = {p["title"] for p in panels}
+    assert {"Data freshness (last update)", "Excluded below EUR 10"} <= titles
