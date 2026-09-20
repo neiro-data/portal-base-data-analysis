@@ -1,160 +1,281 @@
-"""Uncapped bulk ingest of `contratos2025.xlsx` into `data/contracts.parquet`.
+"""Bulk ingest: workbooks -> raw parquet (verbatim) -> treated `data/contracts.parquet`.
 
-This is the one place in the package sanctioned to read the contracts
-workbook in full — everywhere else goes through `xlsx_ingest.load_contracts`,
-which always caps rows. `pl.read_excel` here has no `n_rows` cap, matching
-the file's actual row count.
+Two layers (see `raw_ingest` and `transform`). This module orchestrates them and owns the change
+tracking: every treated row carries `row_hash`, `first_ingested_at` and `updated_at`, merged per
+`idcontrato` against the previous treated file.
 
-Contracts are upserted on `idcontrato` with `keep="last"`: unlike entities
-(whose identity is stable, so `keep="first"` in `entities_db`), contracts are
-amended over time (fields like `dataFechoContrato` fill in after signing), so
-the most recently ingested version of a row is the truth.
+The treated stage always reprocesses *every* raw year on disk, never a subset: the fuzzy
+`adjudicante_key` clustering is dataset-wide, so keys must be computed over all years together.
+`years` only selects which workbooks are (re)converted to raw parquet.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
 
-from base_gov import entities_db
-from base_gov.xlsx_ingest import (
-    ADJUDICANTE,
-    ADJUDICATARIOS,
-    CONTRACT_ID,
-    CONTRACT_TYPE,
-    CPV,
-    DESCRICAO,
-    NUTS,
-    OBJECTO,
-    PUBLISHED_DATE,
-    SIGNED_DATE,
-    VALUE_EUR,
-    YEAR,
-)
+from base_gov import entities_db, raw_ingest
+from base_gov.stats import MIN_VALUE
+from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, treat
+from base_gov.xlsx_ingest import ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID
 
 logger = logging.getLogger("base_gov")
 
-BULK_REQUIRED_COLUMNS = (
-    CONTRACT_ID,
-    ADJUDICANTE,
-    ADJUDICATARIOS,
-    OBJECTO,
-    DESCRICAO,
-    VALUE_EUR,
-    SIGNED_DATE,
-    PUBLISHED_DATE,
-    CONTRACT_TYPE,
-    CPV,
-    NUTS,
-    YEAR,
-)
-
-_TYPED_CORE = (CONTRACT_ID, VALUE_EUR, SIGNED_DATE)
+_TS = pl.Datetime("us", "UTC")
+_TRACKED = ("idcontrato", "row_hash", *TIMESTAMP_SCHEMA)
 
 
 @dataclass(frozen=True)
-class BulkIngestResult:
-    rows_read: int
-    contracts_total: int
-    adjudicantes_total: int
-    adjudicatarios_total: int
+class YearSummary:
+    year: int
+    read: int
+    ingested: int
+    new: int
+    updated: int
+    unchanged: int
+    below_min: int  # flagged rows, a subset of `ingested` — not a deduction
 
 
-def load_all_contracts(path: Path) -> pl.DataFrame:
-    """Read every row of the contracts workbook, no cap.
+@dataclass(frozen=True)
+class IngestSummary:
+    per_year: list[YearSummary]
+    adjudicantes_total: int = 0
+    adjudicatarios_total: int = 0
+    min_value: float = MIN_VALUE
+    ingested_at: datetime | None = field(default=None)
 
-    Raises `ValueError` if a required column is missing, or if any of the
-    typed-core columns (`idcontrato`, `precoContratual`,
-    `dataCelebracaoContrato`) arrived as `String` — a silent string date or
-    price would poison every later time-series.
-    """
-    df = pl.read_excel(path)
-    missing = [c for c in BULK_REQUIRED_COLUMNS if c not in df.columns]
-    if missing:
-        raise ValueError(
-            f"expected columns {list(BULK_REQUIRED_COLUMNS)} not found in {path}; "
-            f"missing {missing}; observed columns: {df.columns}"
+    def _total(self, attr: str) -> int:
+        return sum(getattr(y, attr) for y in self.per_year)
+
+    @property
+    def read(self) -> int:
+        return self._total("read")
+
+    @property
+    def ingested(self) -> int:
+        return self._total("ingested")
+
+    @property
+    def new(self) -> int:
+        return self._total("new")
+
+    @property
+    def updated(self) -> int:
+        return self._total("updated")
+
+    @property
+    def unchanged(self) -> int:
+        return self._total("unchanged")
+
+    @property
+    def below_min(self) -> int:
+        return self._total("below_min")
+
+    def render(self) -> str:
+        head = ("year", "read", "ingested", "new", "updated", "unchanged")
+        below = f"below_min(<€{self.min_value:g})"
+        rows = [
+            (str(y.year), y.read, y.ingested, y.new, y.updated, y.unchanged, y.below_min)
+            for y in self.per_year
+        ]
+        total = (
+            "total",
+            self.read,
+            self.ingested,
+            self.new,
+            self.updated,
+            self.unchanged,
+            self.below_min,
         )
-    stringly = [c for c in _TYPED_CORE if df.schema[c] == pl.String]
-    if stringly:
-        raise ValueError(
-            f"columns {stringly} were inferred as String in {path}; expected numeric/date dtypes"
-        )
-    return df
 
+        def fmt(v: str | int) -> str:
+            return v if isinstance(v, str) else f"{v:_}"
 
-def read_contracts(path: Path) -> pl.DataFrame:
-    if not path.exists():
-        return pl.DataFrame()
-    return pl.read_parquet(path)
+        table = [[*head, below], *[[fmt(c) for c in r] for r in rows], [fmt(c) for c in total]]
+        widths = [max(len(r[i]) for r in table) for i in range(len(head) + 1)]
 
-
-def write_contracts(df: pl.DataFrame, path: Path, *, force: bool = False) -> int:
-    """Upsert `df` into `path` on `idcontrato`, keeping the newest row.
-
-    With `force=True`, `df` replaces whatever is on disk instead of merging
-    with it. Otherwise, if an existing parquet's schema differs from `df`'s,
-    raises `ValueError` telling the caller to delete `path` and re-run rather
-    than silently half-merging.
-
-    Rows with a null `idcontrato` are not deduped against each other by id
-    (there's nothing to key on), but exact duplicate rows are still collapsed
-    so re-running against an unchanged workbook doesn't grow the file forever.
-    """
-    if force or not path.exists():
-        combined = df
-    else:
-        existing = read_contracts(path)
-        if existing.columns and existing.columns != df.columns:
-            raise ValueError(
-                f"schema of existing {path} ({existing.columns}) differs from the incoming "
-                f"frame ({df.columns}); delete {path} and re-run to rebuild it from scratch"
+        def line(cells: list[str]) -> str:
+            first, rest = (
+                cells[0].ljust(widths[0]),
+                [c.rjust(w) for c, w in zip(cells[1:], widths[1:], strict=True)],
             )
-        combined = pl.concat([existing, df], how="vertical" if existing.columns else "diagonal")
+            return "  ".join([first, *rest])
 
-    with_id = combined.filter(pl.col(CONTRACT_ID).is_not_null()).unique(
-        subset=CONTRACT_ID, keep="last"
+        rule = "-" * len(line(table[0]))
+        return "\n".join([line(table[0]), *map(line, table[1:-1]), rule, line(table[-1])])
+
+
+def _utc(ts: datetime) -> datetime:
+    return ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+
+
+def _previous(path: Path) -> pl.LazyFrame | None:
+    """The tracked columns of the previous treated file, or None if it is absent/pre-tracking."""
+    if not path.exists():
+        return None
+    prev = pl.scan_parquet(path)
+    have = prev.collect_schema().names()
+    if any(c not in have for c in _TRACKED):
+        logger.warning("%s has no change-tracking columns; treating every row as new", path)
+        return None
+    return prev.select(_TRACKED).rename(
+        {"row_hash": "_prev_hash", "first_ingested_at": "_prev_first", "updated_at": "_prev_upd"}
     )
-    without_id = combined.filter(pl.col(CONTRACT_ID).is_null()).unique()
-    merged = pl.concat([with_id, without_id])
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    merged.write_parquet(path)
-    return merged.height
+
+def _dedup(raw: pl.LazyFrame) -> pl.LazyFrame:
+    """One row per `idcontrato`; the latest raw year wins if a contract shows up in two files."""
+    return raw.unique(subset=CONTRACT_ID, keep="last", maintain_order=True)
+
+
+def merge_tracking(
+    treated: pl.LazyFrame, previous: pl.LazyFrame | None, run_ts: datetime
+) -> pl.LazyFrame:
+    """Add `first_ingested_at` / `updated_at` and a `_status` (new | updated | unchanged)."""
+    ts = pl.lit(_utc(run_ts), dtype=_TS)
+    if previous is None:
+        return treated.with_columns(
+            ts.alias("first_ingested_at"), ts.alias("updated_at"), pl.lit("new").alias("_status")
+        )
+    joined = treated.join(previous, on="idcontrato", how="left")
+    status = (
+        pl.when(pl.col("_prev_first").is_null())
+        .then(pl.lit("new"))
+        .when(pl.col("row_hash") == pl.col("_prev_hash"))
+        .then(pl.lit("unchanged"))
+        .otherwise(pl.lit("updated"))
+    )
+    return joined.with_columns(status.alias("_status")).with_columns(
+        pl.coalesce("_prev_first", ts).alias("first_ingested_at"),
+        pl.when(pl.col("_status") == "unchanged")
+        .then(pl.col("_prev_upd"))
+        .otherwise(ts)
+        .alias("updated_at"),
+    )
+
+
+def _write_manifest_treated(manifest: Path, min_value: float) -> None:
+    data = json.loads(manifest.read_text()) if manifest.exists() else {}
+    old = data.get("treated", {}).get("min_value")
+    if old is not None and old != min_value:
+        logger.info(
+            "min_value changed %s -> %s: flags refresh, row hashes are unaffected", old, min_value
+        )
+    data["treated"] = {"min_value": min_value}
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _raw_counts(raw_dir: Path, years: Sequence[int]) -> dict[int, int]:
+    return {
+        y: pl.scan_parquet(raw_ingest.raw_path(raw_dir, y)).select(pl.len()).collect().item()
+        for y in years
+    }
 
 
 def ingest(
-    xlsx: Path,
+    source_dir: Path,
+    raw_dir: Path,
     out: Path,
     adjudicantes_out: Path,
     adjudicatarios_out: Path,
     *,
-    force: bool = False,
-) -> BulkIngestResult:
-    """Load the full workbook and upsert contracts + both entity roles."""
+    years: Sequence[int] = (),
+    min_value: float = MIN_VALUE,
+    ingested_at: datetime | None = None,
+    rebuild: bool = False,
+    manifest: Path | None = None,
+) -> IngestSummary:
+    """Raw-ingest `years` (unless `rebuild`), then rebuild the treated layer from all raw years.
+
+    With `rebuild`, the treated and entity parquets are deleted first and the xlsx files are not
+    read: everything is recomputed from `raw_dir`.
+    """
     start = time.monotonic()
-    df = load_all_contracts(xlsx)
-    logger.info("read %s rows from %s (%.1fs)", df.height, xlsx, time.monotonic() - start)
+    run_ts = _utc(ingested_at or datetime.now(UTC))
 
-    contracts_total = write_contracts(df, out, force=force)
-    logger.info("upserted %s contracts into %s", contracts_total, out)
+    if rebuild:
+        for path in (out, adjudicantes_out, adjudicatarios_out):
+            path.unlink(missing_ok=True)
+    else:
+        raw_ingest.ingest_years(source_dir, raw_dir, years)
 
-    adjudicantes_total = entities_db.write_entities(entities_db.adjudicantes(df), adjudicantes_out)
-    logger.info("upserted %s adjudicantes into %s", adjudicantes_total, adjudicantes_out)
+    all_years = raw_ingest.raw_years(raw_dir)
+    if not all_years:
+        raise FileNotFoundError(f"no raw parquet files in {raw_dir}; ingest a workbook first")
+    read = _raw_counts(raw_dir, all_years)
 
-    adjudicatarios_total = entities_db.write_entities(
-        entities_db.adjudicatarios(df), adjudicatarios_out
+    src = pl.concat(
+        [
+            pl.scan_parquet(raw_ingest.raw_path(raw_dir, y)).with_columns(
+                pl.lit(y, dtype=pl.Int32).alias("_src_year")
+            )
+            for y in all_years
+        ],
+        how="diagonal_relaxed",
     )
-    logger.info("upserted %s adjudicatarios into %s", adjudicatarios_total, adjudicatarios_out)
+    if src.select(pl.col(CONTRACT_ID).is_null().any()).collect().item():
+        raise ValueError(f"null {CONTRACT_ID} in raw data; change tracking needs a key")
+    deduped = _dedup(src)
 
+    treated = treat(deduped.drop("_src_year"), min_value=min_value)
+    tracked = merge_tracking(
+        treated.join(deduped.select(CONTRACT_ID, "_src_year"), on=CONTRACT_ID, how="left"),
+        _previous(out),
+        run_ts,
+    )
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    staged = out.with_suffix(".staged.parquet")
+    tmp = out.with_suffix(".tmp")
+    tracked.sink_parquet(staged)
+    try:
+        counts = (
+            pl.scan_parquet(staged)
+            .group_by("_src_year")
+            .agg(
+                pl.len().alias("ingested"),
+                (pl.col("_status") == "new").sum().alias("new"),
+                (pl.col("_status") == "updated").sum().alias("updated"),
+                (pl.col("_status") == "unchanged").sum().alias("unchanged"),
+                pl.col("is_below_min_value").sum().alias("below_min"),
+            )
+            .collect()
+        )
+        pl.scan_parquet(staged).select(TREATED_COLUMNS).sink_parquet(tmp)
+        tmp.replace(out)
+    finally:
+        staged.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
+
+    by_year = {r["_src_year"]: r for r in counts.iter_rows(named=True)}
+    zero = {"ingested": 0, "new": 0, "updated": 0, "unchanged": 0, "below_min": 0}
+    per_year = [
+        YearSummary(year=y, read=read[y], **{k: by_year.get(y, zero)[k] for k in zero})
+        for y in all_years
+    ]
+
+    parties = deduped.select(ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID).collect()
+    adjudicantes_total = entities_db.write_entities(
+        entities_db.adjudicantes(parties), adjudicantes_out
+    )
+    adjudicatarios_total = entities_db.write_entities(
+        entities_db.adjudicatarios(parties), adjudicatarios_out
+    )
+
+    _write_manifest_treated(manifest or out.parent / "manifest.json", min_value)
     logger.info("ingest complete in %.1fs", time.monotonic() - start)
-    return BulkIngestResult(
-        rows_read=df.height,
-        contracts_total=contracts_total,
+    return IngestSummary(
+        per_year=per_year,
         adjudicantes_total=adjudicantes_total,
         adjudicatarios_total=adjudicatarios_total,
+        min_value=min_value,
+        ingested_at=run_ts,
     )

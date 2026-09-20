@@ -97,34 +97,47 @@ def _cluster_names(names: list[str], threshold: float = SIMILARITY_THRESHOLD) ->
     return {n: representative[norm] for n, norm in normalized.items()}
 
 
-def entity_key(
-    df: pl.DataFrame, *, prefix: str, threshold: float = SIMILARITY_THRESHOLD
-) -> pl.DataFrame:
+def entity_key[F: (pl.DataFrame, pl.LazyFrame)](
+    df: F, *, prefix: str, threshold: float = SIMILARITY_THRESHOLD
+) -> F:
     """Add ``<prefix>_status``, ``<prefix>_key`` and ``<prefix>_key_source``.
 
     Needs ``<prefix>_nipc`` (raw) and ``<prefix>_name``. Rules, in order: a valid 9-digit NIPC is
     the key (``nipc``); a dirty NIPC is kept cleaned and separate (``nipc_dirty``); only the ``-``
-    sentinel falls back to a name-similarity cluster (``name``).
+    sentinel falls back to a name-similarity cluster (``name``). A no-name entry gets
+    ``NONAME::<idcontrato>``, so the key does not depend on row order
+    (two no-name entries of the *same* contract share it — irrelevant for the single-valued
+    ``adjudicante``).
+
+    Accepts a ``DataFrame`` or a ``LazyFrame`` and returns the same kind; only the distinct
+    ``NO_NIF`` names are collected, the rest of the frame stays lazy.
     """
     nipc, name = f"{prefix}_nipc", f"{prefix}_name"
     status, key, source = f"{prefix}_status", f"{prefix}_key", f"{prefix}_key_source"
-    out = df.with_columns(classify_nipc(pl.col(nipc)).alias(status))
+    out = df.lazy().with_columns(classify_nipc(pl.col(nipc)).alias(status))
 
-    no_nif_names = out.filter(pl.col(status) == "NO_NIF")[name].drop_nulls().unique().to_list()
+    no_nif_names = (
+        out.filter(pl.col(status) == "NO_NIF")
+        .select(pl.col(name).drop_nulls().unique())
+        .collect()[name]
+        .to_list()
+    )
     mapping = _cluster_names(no_nif_names, threshold)
     cluster = pl.DataFrame(
         {name: list(mapping), "_rep": list(mapping.values())},
         schema={name: pl.String, "_rep": pl.String},
     )
-    return (
-        out.join(cluster, on=name, how="left")
+    keyed = (
+        out.join(cluster.lazy(), on=name, how="left")
         .with_columns(
             pl.when(pl.col(status) == "YES")
             .then(_clean_nipc(pl.col(nipc)))
             .when(pl.col(status) == "NO_NIF")
             .then(
                 pl.when(pl.col("_rep").fill_null("") == "")
-                .then(pl.lit("NONAME::") + pl.int_range(pl.len()).cast(pl.String))  # never merged
+                .then(
+                    pl.lit("NONAME::") + pl.col("idcontrato").cast(pl.String)
+                )  # never merged, row-stable
                 .otherwise(pl.lit(_NAME_KEY_PREFIX) + pl.col("_rep"))
             )
             .otherwise(_clean_nipc(pl.col(nipc)).fill_null(pl.lit("")))
@@ -138,6 +151,7 @@ def entity_key(
         )
         .drop("_rep")
     )
+    return keyed.collect() if isinstance(df, pl.DataFrame) else keyed
 
 
 def canonical_names(df: pl.DataFrame, *, prefix: str) -> pl.DataFrame:

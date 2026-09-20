@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 import time
 from pathlib import Path
 from typing import Annotated
@@ -10,9 +11,10 @@ from typing import Annotated
 import httpx
 import typer
 
-from base_gov import analysis, dados_gov
+from base_gov import analysis, dados_gov, raw_ingest
 from base_gov import bulk_ingest as bulk_ingest_module
 from base_gov import entities_db as entities_db_module
+from base_gov.stats import MIN_VALUE
 from base_gov.xlsx_ingest import DEFAULT_ROWS, load_contracts
 
 app = typer.Typer(
@@ -102,9 +104,20 @@ def xlsx_entities(
 
 @app.command("bulk-ingest")
 def bulk_ingest(
-    xlsx: Annotated[Path, typer.Option("--xlsx", help="Path to the contracts workbook.")] = Path(
-        "data/contratos2025.xlsx"
-    ),
+    year: Annotated[
+        list[int] | None,
+        typer.Option("--year", help="Year to (re)convert from its workbook; repeatable."),
+    ] = None,
+    source_dir: Annotated[
+        Path, typer.Option("--source-dir", help="Directory holding contratos<YEAR>.xlsx.")
+    ] = Path("data/source"),
+    xlsx: Annotated[
+        Path | None,
+        typer.Option("--xlsx", help="Deprecated: use --source-dir. Its parent is used."),
+    ] = None,
+    raw_dir: Annotated[
+        Path, typer.Option("--raw-dir", help="Directory for the verbatim raw parquet files.")
+    ] = Path("data/raw"),
     out: Annotated[Path, typer.Option("--out", help="Destination parquet for contracts.")] = Path(
         "data/contracts.parquet"
     ),
@@ -114,22 +127,57 @@ def bulk_ingest(
     adjudicatarios_out: Annotated[
         Path, typer.Option("--adjudicatarios-out", help="Destination parquet for adjudicatarios.")
     ] = Path("data/entities_adjudicatarios.parquet"),
-    force: Annotated[
+    min_value: Annotated[
+        float,
+        typer.Option("--min-value", help="Flag |preco_contratual| below this; 0 flags nothing."),
+    ] = MIN_VALUE,
+    ingested_at: Annotated[
+        datetime | None,
+        typer.Option("--ingested-at", help="Stamp this UTC time instead of now()."),
+    ] = None,
+    raw_only: Annotated[
+        bool, typer.Option("--raw-only", help="Stop after writing the raw parquet files.")
+    ] = False,
+    rebuild: Annotated[
         bool,
         typer.Option(
-            "--force", help="Replace the existing contracts parquet instead of upserting."
+            "--rebuild",
+            help="Delete treated + entity parquets and rebuild from raw; no xlsx is read.",
         ),
     ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
-    """Read the full contracts workbook (no row cap) and upsert contracts and
-    both entity roles into their parquet files."""
+    """Convert workbooks to raw parquet, then rebuild the treated contracts and entities."""
     _configure_logging(verbose)
-    result = bulk_ingest_module.ingest(xlsx, out, adjudicantes_out, adjudicatarios_out, force=force)
-    typer.echo(f"rows read: {result.rows_read}")
-    typer.echo(f"wrote {result.contracts_total} contracts into {out}")
-    typer.echo(f"wrote {result.adjudicantes_total} adjudicantes into {adjudicantes_out}")
-    typer.echo(f"wrote {result.adjudicatarios_total} adjudicatarios into {adjudicatarios_out}")
+    if xlsx is not None:
+        typer.echo("--xlsx is deprecated; use --source-dir", err=True)
+        source_dir = xlsx.parent
+    if rebuild and raw_only:
+        raise typer.BadParameter("--rebuild and --raw-only are mutually exclusive")
+
+    if raw_only:
+        if not year:
+            raise typer.BadParameter("--raw-only needs at least one --year")
+        for y, rows in raw_ingest.ingest_years(source_dir, raw_dir, year).items():
+            typer.echo(f"{y}: {rows:_} rows -> {raw_ingest.raw_path(raw_dir, y)}")
+        return
+
+    if not rebuild and not year:
+        raise typer.BadParameter("pass at least one --year (or --rebuild)")
+    summary = bulk_ingest_module.ingest(
+        source_dir,
+        raw_dir,
+        out,
+        adjudicantes_out,
+        adjudicatarios_out,
+        years=year or (),
+        min_value=min_value,
+        ingested_at=ingested_at,
+        rebuild=rebuild,
+    )
+    typer.echo(summary.render())
+    typer.echo(f"adjudicantes: {summary.adjudicantes_total:_}  ({adjudicantes_out})")
+    typer.echo(f"adjudicatarios: {summary.adjudicatarios_total:_}  ({adjudicatarios_out})")
 
 
 @app.command("download-contracts")
