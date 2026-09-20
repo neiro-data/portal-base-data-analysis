@@ -6,6 +6,7 @@ import os
 import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -87,7 +88,7 @@ def test_list_resources_parses_and_filters_zip() -> None:
         {"resources": [{"title": "contratos2024.zip", "format": "zip"}]},
     ],
 )
-def test_list_resources_raises_on_schema_drift(payload: dict[str, object]) -> None:
+def test_list_resources_raises_on_schema_drift(payload: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         list_resources(client=_api_client(payload))
 
@@ -476,6 +477,152 @@ def test_cli_replaces_differing_local_file(tmp_path: Path, monkeypatch: pytest.M
     assert local.read_bytes() == BODY
     assert read_manifest(tmp_path / "manifest.json")["2025"]["sha1"] == BODY_SHA1
     assert [p.name for p in dest.iterdir()] == ["contratos2025.xlsx"]
+
+
+def _sha1_payload(*titles: str) -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(FIXTURE.read_text())
+    for res in payload["resources"]:
+        if res["title"] in titles:
+            res["checksum"] = {"type": "sha1", "value": BODY_SHA1}
+    return payload
+
+
+def _serve(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/datasets/r/" in request.url.path:
+            return httpx.Response(200, content=BODY)
+        return httpx.Response(200, json=payload)
+
+    monkeypatch.setattr(
+        dados_gov, "make_client", lambda: httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    monkeypatch.setattr("base_gov.cli.time.sleep", lambda _s: None)
+
+
+def test_cli_force_redownloads_matching_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    dest = tmp_path / "source"
+    args = ["download-contracts", "--year", "2024", "--dest", str(dest)]
+    assert CliRunner().invoke(app, args).exit_code == 0
+    again = CliRunner().invoke(app, args)
+    assert "skipped_unchanged" in again.output
+    forced = CliRunner().invoke(app, [*args, "--force"])
+    assert forced.exit_code == 0, forced.output
+    assert "downloaded" in forced.output
+    assert "skipped_unchanged" not in forced.output
+
+
+def test_cli_from_year_widens_with_years(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _serve(monkeypatch, _sha1_payload())
+    base = ["download-contracts", "--dry-run", "--dest", str(tmp_path / "source")]
+    narrow = CliRunner().invoke(app, [*base, "--years", "99", "--from-year", "2024"])
+    assert narrow.exit_code == 0, narrow.output
+    assert "2024" in narrow.output and "2012" not in narrow.output
+    wide = CliRunner().invoke(app, [*base, "--years", "99", "--from-year", "2012"])
+    assert "2012" in wide.output and "2024" in wide.output
+
+
+def test_cli_dry_run_shows_utc_stamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _sha1_payload()
+    for res in payload["resources"]:
+        if res["title"] == "contratos2024.xlsx":
+            res["last_modified"] = "2026-01-01T01:00:00+02:00"
+    _serve(monkeypatch, payload)
+    result = CliRunner().invoke(
+        app, ["download-contracts", "--dry-run", "--year", "2024", "--dest", str(tmp_path / "s")]
+    )
+    assert "2025-12-31T23:00:00Z" in result.output
+
+
+def test_cli_corrupt_manifest_exits_1_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    (tmp_path / "manifest.json").write_text("{not json")
+    result = CliRunner().invoke(
+        app, ["download-contracts", "--year", "2024", "--dest", str(tmp_path / "source")]
+    )
+    assert result.exit_code == 1
+    assert "corrupt manifest" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_cli_list_resources_failure_exits_1_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        dados_gov,
+        "make_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))),
+    )
+    result = CliRunner().invoke(
+        app, ["download-contracts", "--year", "2024", "--dest", str(tmp_path / "source")]
+    )
+    assert result.exit_code == 1
+    assert "could not list resources" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_cli_verify_only_absent_file_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    result = CliRunner().invoke(
+        app,
+        ["download-contracts", "--verify-only", "--year", "2024", "--dest", str(tmp_path / "s")],
+    )
+    assert result.exit_code == 1
+    assert "MISSING locally" in result.output
+
+
+def test_cli_unpublished_requested_year_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload())
+    result = CliRunner().invoke(
+        app,
+        [
+            "download-contracts",
+            "--dry-run",
+            "--year",
+            "2024",
+            "--year",
+            "1999",
+            "--dest",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "1999" in result.output
+
+
+def test_cli_from_year_alone_overrides_default_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload())
+    result = CliRunner().invoke(
+        app, ["download-contracts", "--dry-run", "--from-year", "2012", "--dest", str(tmp_path)]
+    )
+    assert "2012" in result.output and "2025" in result.output
+
+
+def test_cli_dry_run_reports_force_and_detects_local_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    dest = tmp_path / "source"
+    args = ["download-contracts", "--year", "2024", "--dest", str(dest)]
+    assert CliRunner().invoke(app, args).exit_code == 0
+    forced = CliRunner().invoke(app, [*args, "--dry-run", "--force"])
+    assert "would re-download" in forced.output
+    (dest / "contratos2024.xlsx").write_bytes(b"edited after download")
+    rerun = CliRunner().invoke(
+        app, args
+    )  # manifest still lists our sha1; the file is hashed anyway
+    assert "downloaded" in rerun.output
+    assert (dest / "contratos2024.xlsx").read_bytes() == BODY
 
 
 def test_backfill_script_refuses_without_env_var() -> None:

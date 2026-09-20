@@ -42,6 +42,11 @@ class YearSummary:
     unchanged: int
     below_min: int  # flagged rows, a subset of `ingested` — not a deduction
 
+    @property
+    def superseded(self) -> int:
+        """Rows dropped because a later year's file carries the same `idcontrato`."""
+        return self.read - self.ingested
+
 
 @dataclass(frozen=True)
 class IngestSummary:
@@ -78,16 +83,30 @@ class IngestSummary:
     def below_min(self) -> int:
         return self._total("below_min")
 
+    @property
+    def superseded(self) -> int:
+        return self._total("superseded")
+
     def render(self) -> str:
-        head = ("year", "read", "ingested", "new", "updated", "unchanged")
+        head = ("year", "read", "superseded", "ingested", "new", "updated", "unchanged")
         below = f"below_min(<€{self.min_value:g})"
         rows = [
-            (str(y.year), y.read, y.ingested, y.new, y.updated, y.unchanged, y.below_min)
+            (
+                str(y.year),
+                y.read,
+                y.superseded,
+                y.ingested,
+                y.new,
+                y.updated,
+                y.unchanged,
+                y.below_min,
+            )
             for y in self.per_year
         ]
         total = (
             "total",
             self.read,
+            self.superseded,
             self.ingested,
             self.new,
             self.updated,
@@ -271,6 +290,11 @@ def ingest(
     )
 
     _write_manifest_treated(manifest or out.parent / "manifest.json", min_value)
+    superseded = sum(y.superseded for y in per_year)
+    if superseded:
+        logger.info(
+            "%s rows superseded by a later year's file (same %s)", f"{superseded:_}", CONTRACT_ID
+        )
     logger.info("ingest complete in %.1fs", time.monotonic() - start)
     return IngestSummary(
         per_year=per_year,

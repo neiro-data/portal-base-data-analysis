@@ -7,11 +7,11 @@ Every command in this project, grouped by target. Referenced from [README.md](RE
 ```bash
 uv run base-gov download-contracts                # last 3 years -> data/source/
 uv run base-gov download-contracts --dry-run      # list resources and planned action
-uv run base-gov download-contracts --verify-only  # compare local sha1 to the API; exit 1 on mismatch
+uv run base-gov download-contracts --verify-only  # compare local sha1 to the API; exit 1 on mismatch or missing file
 uv run base-gov download-contracts --year 2025 --force
 ```
 
-Flags: `--years N` (default 3), `--year Y` (repeatable, overrides `--years`), `--from-year Y`,
+Flags: `--years N` (default 3), `--year Y` (repeatable, overrides `--years`), `--from-year Y` (every year from Y on; overrides `--years`),
 `--dest PATH`, `--force`, `--dry-run`, `--verify-only`, `--verbose`. Results go to
 `data/manifest.json`. `bin/download-contracts.sh` wraps the command and passes all options through.
 
@@ -144,6 +144,6 @@ make check             # lint + typecheck + test
 ```python
 from base_gov import analysis, load_contracts
 
-df = load_contracts("data/contratos2025.xlsx", rows=1000)
+df = load_contracts("data/source/contratos2025.xlsx", rows=1000)
 municipalities = analysis.municipality_contracts(df)
 ```

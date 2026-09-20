@@ -19,7 +19,6 @@ import httpx
 DATASET_SLUG = "contratos-publicos-portal-base-impic-contratos-de-2012-a-2026"
 API_BASE = "https://dados.gov.pt/api/1"
 DEFAULT_YEARS = 3
-FIRST_YEAR = 2012
 TITLE_RE = re.compile(r"contratos(\d{4})\.xlsx")
 
 CHUNK_SIZE = 1024 * 1024
@@ -141,14 +140,14 @@ def select_years(
     only: Sequence[int] | None = None,
     from_year: int | None = None,
 ) -> list[Resource]:
-    """Pick resources: ``only`` wins; else the last ``years`` years, floored at ``from_year``."""
+    """Pick resources: ``only`` wins, then ``from_year`` (to today), else the last ``years``."""
     if only:
         wanted = set(only)
         return [r for r in resources if r.year in wanted]
-    current = (today or date.today()).year
-    cutoff = current - (years - 1)
     if from_year is not None:
-        cutoff = max(cutoff, from_year)
+        cutoff = from_year
+    else:
+        cutoff = (today or date.today()).year - (years - 1)
     return [r for r in resources if r.year >= cutoff]
 
 
@@ -181,7 +180,10 @@ def verify_local(resource: Resource, path: Path) -> LocalState:
 def read_manifest(path: Path) -> Manifest:
     if not path.exists():
         return {}
-    manifest: Manifest = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        manifest: Manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise DadosGovError(f"corrupt manifest {path}: {exc}") from exc
     return manifest
 
 
@@ -240,10 +242,11 @@ def download(
                 "%s: no API sha1; re-downloading and verifying filesize only", resource.title
             )
         else:
-            entry = manifest.get(key)
-            manifest_ok = entry is not None and entry.get("sha1") == resource.sha1
-            if manifest_ok or verify_local(resource, final) == "match":
-                if not manifest_ok:
+            # Always hash the local file (cheap next to a download), so a file changed after our
+            # last download is noticed and this path agrees with --dry-run / --verify-only.
+            if verify_local(resource, final) == "match":
+                entry = manifest.get(key)
+                if entry is None or entry.get("sha1") != resource.sha1:
                     manifest[key] = _manifest_entry(resource, final, resource.sha1)
                 return DownloadResult(resource.year, final, "skipped_unchanged", 0, resource.sha1)
             logger.info("%s: local sha1 differs from the API; replacing %s", resource.title, final)

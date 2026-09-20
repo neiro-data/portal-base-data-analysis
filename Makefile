@@ -49,7 +49,7 @@ fmt: ## Run ruff formatter
 	uv run ruff format .
 
 typecheck: ## Run mypy
-	uv run mypy src
+	uv run mypy src tests
 
 test: ## Run pytest
 	uv run pytest

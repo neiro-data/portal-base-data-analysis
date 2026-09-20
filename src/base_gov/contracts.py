@@ -22,4 +22,5 @@ def is_municipio_expr() -> pl.Expr:
         pl.col("adjudicante_name")
         .map_elements(normalize_name, return_dtype=pl.String)
         .str.starts_with("municipio")
+        .fill_null(False)
     )
