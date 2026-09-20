@@ -5,34 +5,92 @@
   "version": 1,
   "editable": false,
   "timezone": "utc",
-  "time": { "from": "now-90d", "to": "now" },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
   "templating": {
     "list": [
+      {
+        "name": "min_contract_value",
+        "label": "Min contract value (€)",
+        "type": "custom",
+        "hide": 0,
+        "description": "Minimum contract value filter. A panel only counts a contract when |preço contratual| is greater than or equal to this amount, in euros. The loaded data already leaves out contracts below €10 (the is_below_min_value ingest rule, MIN_VALUE in src/base_gov/stats.py), so 0 and 10 give the same result. €5 000 / €20 000 / €75 000 are the informal reference points used in the notebooks — they are NOT legal CCP thresholds. The absolute value is used, because negative prices occur in the source data.",
+        "query": "0,10,5000,20000,75000",
+        "current": {
+          "selected": true,
+          "text": "10",
+          "value": "10"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "0",
+            "value": "0"
+          },
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "selected": false,
+            "text": "5000",
+            "value": "5000"
+          },
+          {
+            "selected": false,
+            "text": "20000",
+            "value": "20000"
+          },
+          {
+            "selected": false,
+            "text": "75000",
+            "value": "75000"
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      },
       {
         "name": "adjudicante",
         "label": "Adjudicante",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
         "query": "SELECT name AS __text, entity_id AS __value FROM procurement.entities_adjudicantes ORDER BY name",
         "refresh": 2,
         "sort": 1,
         "multi": true,
         "includeAll": true,
         "allValue": "__ALL__",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "adjudicatario",
         "label": "Adjudicatário",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
         "query": "SELECT name AS __text, entity_id AS __value FROM procurement.entities_adjudicatarios ORDER BY name",
         "refresh": 2,
         "sort": 1,
         "multi": true,
         "includeAll": true,
         "allValue": "__ALL__",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -42,17 +100,31 @@
       "title": "Rows shown",
       "type": "stat",
       "description": "The table below is capped at LIMIT 5000 rows, newest first; this count makes a silent truncation visible.",
-      "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
-      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) LIMIT 5000) t"
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
         }
       ]
     },
@@ -60,30 +132,119 @@
       "id": 2,
       "title": "Contracts",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
-      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 4 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
       "options": {
-        "footer": { "show": false },
+        "footer": {
+          "show": false
+        },
         "cellHeight": "sm",
         "showHeader": true
       },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Preço" }, "properties": [{ "id": "unit", "value": "currencyEUR" }] },
-          { "matcher": { "id": "byName", "options": "Date" }, "properties": [{ "id": "unit", "value": "time" }] },
           {
-            "matcher": { "id": "byName", "options": "Descrição" },
+            "matcher": {
+              "id": "byName",
+              "options": "Preço"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "inspect" } },
-              { "id": "custom.width", "value": 320 }
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Objecto" },
+            "matcher": {
+              "id": "byName",
+              "options": "Date"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "inspect" } },
-              { "id": "custom.width", "value": 240 }
+              {
+                "id": "unit",
+                "value": "time"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Descrição"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "inspect"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 320
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Objecto"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "inspect"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 240
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "adjudicante_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Adjudicante"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Analysis by adjudicante",
+                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${__url_time_range}",
+                    "targetBlank": false
+                  },
+                  {
+                    "title": "Contracts (filtered)",
+                    "url": "/d/base-contracts-table/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${__url_time_range}",
+                    "targetBlank": false
+                  }
+                ]
+              }
             ]
           }
         ]
@@ -92,7 +253,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) ORDER BY v.celebrated_at DESC LIMIT 5000"
+          "rawSql": "SELECT v.adjudicante_id AS \"adjudicante_id\", v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
         }
       ]
     }
