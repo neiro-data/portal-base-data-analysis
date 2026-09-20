@@ -69,10 +69,25 @@ def test_summary_arithmetic(env: Env) -> None:
     assert [y.year for y in s.per_year] == [2024, 2025]
     for y in (*s.per_year,):
         assert y.new + y.updated + y.unchanged == y.ingested == y.read
+        assert y.superseded == 0
         assert y.below_min <= y.ingested
     assert s.new + s.updated + s.unchanged == s.ingested == s.read
     assert (s.per_year[0].below_min, s.per_year[1].below_min) == (4, 0)
     assert "total" in s.render() and "below_min(<€10)" in s.render()
+
+
+def test_latest_year_wins_and_superseded_rows_are_reported(env: Env) -> None:
+    # 2026 re-publishes ids 100 and 101 (already in 2024) with a different price.
+    dup = make_rows(2026, 2, start_id=100, price=9999.0)
+    write_workbook(env.source, 2026, dup)
+    s = env.run((2024, 2025, 2026), at=T0)
+    by_year = {y.year: y for y in s.per_year}
+    assert by_year[2024].superseded == 2 and by_year[2024].ingested == 2
+    assert by_year[2026].superseded == 0 and by_year[2026].ingested == 2
+    assert s.read == 12 and s.ingested == 10 and s.superseded == 2
+    df = env.treated().filter(pl.col("idcontrato").is_in([100, 101])).sort("idcontrato")
+    assert df["preco_contratual"].to_list() == [9999.0, 10000.0]  # the 2026 rows won
+    assert "superseded" in s.render()
 
 
 def test_ingested_at_stamps_given_value_not_now(env: Env) -> None:
