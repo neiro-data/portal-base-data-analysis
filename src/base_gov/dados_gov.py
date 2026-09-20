@@ -181,7 +181,10 @@ def verify_local(resource: Resource, path: Path) -> LocalState:
 def read_manifest(path: Path) -> Manifest:
     if not path.exists():
         return {}
-    manifest: Manifest = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        manifest: Manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise DadosGovError(f"corrupt manifest {path}: {exc}") from exc
     return manifest
 
 

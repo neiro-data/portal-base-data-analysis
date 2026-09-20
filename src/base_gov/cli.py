@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -36,7 +36,7 @@ def _configure_logging(verbose: bool) -> None:
 @app.command("xlsx-analyze")
 def xlsx_analyze(
     xlsx: Annotated[Path, typer.Option("--xlsx", help="Path to the contracts workbook.")] = Path(
-        "data/contratos2025.xlsx"
+        "data/source/contratos2025.xlsx"
     ),
     rows: Annotated[
         int, typer.Option("--rows", help="Rows to read from the workbook.")
@@ -73,7 +73,7 @@ def xlsx_analyze(
 @app.command("xlsx-entities")
 def xlsx_entities(
     xlsx: Annotated[Path, typer.Option("--xlsx", help="Path to the contracts workbook.")] = Path(
-        "data/contratos2025.xlsx"
+        "data/source/contratos2025.xlsx"
     ),
     rows: Annotated[
         int, typer.Option("--rows", help="Rows to read from the workbook.")
@@ -210,9 +210,16 @@ def download_contracts(
     """Download contratosYYYY.xlsx from dados.gov.pt with sha1 verification."""
     _configure_logging(verbose)
     with dados_gov.make_client() as client:
-        selected = dados_gov.select_years(
-            dados_gov.list_resources(client=client), years=years, only=year, from_year=from_year
-        )
+        try:
+            selected = dados_gov.select_years(
+                dados_gov.list_resources(client=client),
+                years=years,
+                only=year,
+                from_year=from_year,
+            )
+        except (dados_gov.DadosGovError, httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            typer.echo(f"could not list resources: {exc}", err=True)
+            raise typer.Exit(1) from exc
         if not selected:
             typer.echo("no matching resources", err=True)
             raise typer.Exit(1)
@@ -229,7 +236,7 @@ def download_contracts(
                     "match": "unchanged (local sha1 match)",
                     "mismatch": "would replace",
                 }[state]
-                stamp = res.last_modified.strftime("%Y-%m-%dT%H:%M:%SZ")
+                stamp = res.last_modified.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
                 typer.echo(
                     f"{res.year:<6} {res.filesize / 1e6:>6.1f} MB {stamp:<21} {action}"
                     f"  sha1={res.sha1}"
@@ -239,7 +246,11 @@ def download_contracts(
             return
 
         manifest_path = dest.parent / "manifest.json"
-        manifest = dados_gov.read_manifest(manifest_path)
+        try:
+            manifest = dados_gov.read_manifest(manifest_path)
+        except dados_gov.DadosGovError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
         failures = 0
         for index, res in enumerate(selected):
             try:

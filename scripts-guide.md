@@ -144,6 +144,6 @@ make check             # lint + typecheck + test
 ```python
 from base_gov import analysis, load_contracts
 
-df = load_contracts("data/contratos2025.xlsx", rows=1000)
+df = load_contracts("data/source/contratos2025.xlsx", rows=1000)
 municipalities = analysis.municipality_contracts(df)
 ```

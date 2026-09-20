@@ -13,7 +13,7 @@ import polars as pl
 
 DEFAULT_ROWS = 1000
 
-# Observed header (first 1000 rows of data/contratos2025.xlsx, see
+# Observed header (first 1000 rows of data/source/contratos2025.xlsx, see
 # plan-xlsx-entities.md step 1) mapped to the names the rest of this package
 # uses. Kept as one place to update if a future export renames columns.
 CONTRACT_ID = "idcontrato"
