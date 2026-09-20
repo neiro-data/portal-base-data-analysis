@@ -6,7 +6,7 @@ the views that the dashboards read. Referenced from [README.md](README.md).
 ## Pipeline
 
 ```
-data/contratos2025.xlsx (manual download)  --bulk-ingest-->  data/*.parquet
+data/source/contratos<YEAR>.xlsx  --bulk-ingest-->  data/raw/*.parquet  -->  data/contracts.parquet
 data/*.parquet                             --pg_parquet COPY-->  procurement.*  --views-->  Grafana
 ```
 
@@ -17,7 +17,8 @@ the commands of each stage.
 
 | File | Grain | Written by |
 | --- | --- | --- |
-| `data/contracts.parquet` | One row per `idcontrato`. | `bin/ingest-contracts.sh` |
+| `data/raw/contracts_raw_<YEAR>.parquet` | Verbatim workbook rows, one file per year. | `bin/ingest-contracts.sh` |
+| `data/contracts.parquet` | Treated: one row per `idcontrato`, with `row_hash`, `first_ingested_at`, `updated_at`, `is_below_min_value`. 2026 is year-to-date. | `bin/ingest-contracts.sh` |
 | `data/entities_adjudicantes.parquet` | One row per contracting entity. | `xlsx-entities`, `bulk-ingest` |
 | `data/entities_adjudicatarios.parquet` | One row per contracted entity. | `xlsx-entities`, `bulk-ingest` |
 

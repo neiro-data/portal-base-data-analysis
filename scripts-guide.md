@@ -30,14 +30,28 @@ This is the only path in the project that reads the workbook without the `--rows
 streaming read path, so the whole sheet materializes at once.
 
 ```bash
-bin/ingest-contracts.sh                                                      # default paths
-bin/ingest-contracts.sh --xlsx data/contratos2025.xlsx --out data/contracts.parquet
-bin/ingest-contracts.sh --force                                              # replace, do not upsert
+bin/ingest-contracts.sh --year 2024 --year 2025 --year 2026   # raw + treated, all years
+bin/ingest-contracts.sh --raw-only --year 2024                # stop after data/raw/
+bin/ingest-contracts.sh --rebuild --ingested-at 2026-09-01    # wipe treated, rebuild from raw
+bin/ingest-contracts.sh --min-value 0                         # flag nothing
 ```
 
-The script writes `data/contracts.parquet`, upserted on `idcontrato`. It also upserts both
-entity parquet files from the full dataset. A new run is idempotent. The row count stays the
-same if the source workbook did not change.
+Two layers. **Raw:** `data/source/contratos<YEAR>.xlsx` becomes `data/raw/contracts_raw_<YEAR>.parquet`,
+columns verbatim, one workbook in memory at a time. **Treated:** `data/contracts.parquet`, built
+from *all* raw years together (the fuzzy `adjudicante_key` is dataset-wide). It adds `ano`,
+`n_concorrentes`, `is_municipio`, `valor_por_dia`, `row_hash`, `first_ingested_at`,
+`updated_at` and `is_below_min_value`.
+
+- Rows with `|preco_contratual| < --min-value` (default 10; null prices too) are **flagged, not
+  dropped**. Filter with `~pl.col("is_below_min_value")`.
+- `row_hash` covers the treated content columns. `updated_at` moves only when it changes;
+  `first_ingested_at` is set once. Re-running on unchanged input reports `new = 0, updated = 0`.
+- A repeated `idcontrato` keeps its last row (contracts are amended over time), so `ingested`
+  can be lower than `read`.
+- `--rebuild` deletes the treated and entity parquets and rebuilds from `data/raw/` without
+  reading any xlsx. A new treated column re-hashes every row once (a one-time mass `updated`).
+- 2026 is year-to-date: do not read its totals as a full year.
+- `--xlsx` still works but is deprecated; use `--source-dir`.
 
 See [SCHEMA.md — Deduplication rules](SCHEMA.md#deduplication-rules) for why contracts and
 entities deduplicate in opposite directions.
