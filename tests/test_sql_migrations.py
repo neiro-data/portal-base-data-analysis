@@ -231,7 +231,7 @@ DASHBOARD_FILES = sorted(DASHBOARD_DIR.glob("*.json"))
 
 
 def test_dashboards_found() -> None:
-    assert len(DASHBOARD_FILES) == 4
+    assert len(DASHBOARD_FILES) == 6
 
 
 @pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
@@ -243,7 +243,7 @@ def test_dashboard_has_no_municipio_ilike(path: Path) -> None:
 def test_dashboard_reads_material_view_only(path: Path) -> None:
     text = path.read_text()
     assert "v_contracts_enriched" not in text
-    assert "v_contracts_material" in text
+    assert "v_contracts_material" in text or "v_adjudicatario_contracts" in text
 
 
 def test_002_carries_guarded_rename() -> None:
@@ -285,3 +285,57 @@ def test_overview_has_freshness_and_excluded_panels() -> None:
     panels = json.loads((DASHBOARD_DIR / "overview.json").read_text())["panels"]
     titles = {p["title"] for p in panels}
     assert {"Data freshness (last update)", "Excluded below EUR 10"} <= titles
+
+
+def _load_dashboards() -> dict[str, dict]:
+    import json
+
+    return {p.name: json.loads(p.read_text()) for p in DASHBOARD_FILES}
+
+
+def test_every_dashboard_json_parses() -> None:
+    assert len(_load_dashboards()) == len(DASHBOARD_FILES)
+
+
+@pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
+def test_every_dashboard_has_min_contract_value_var(path: Path) -> None:
+    import json
+
+    variables = json.loads(path.read_text())["templating"]["list"]
+    entry = next((v for v in variables if v["name"] == "min_contract_value"), None)
+    assert entry is not None
+    assert entry["type"] == "custom"
+    assert entry.get("description")
+
+
+def test_entity_dashboards_exist_with_expected_uids() -> None:
+    uids = {d["uid"] for d in _load_dashboards().values()}
+    assert {"base-adjudicante", "base-adjudicatario"} <= uids
+
+
+@pytest.mark.parametrize("name", ["overview.json", "overview-municipios.json"])
+def test_overview_links_to_entity_dashboards(name: str) -> None:
+    text = (DASHBOARD_DIR / name).read_text()
+    assert "/d/base-adjudicante/" in text
+    assert "/d/base-adjudicatario/" in text
+
+
+@pytest.mark.parametrize(
+    "name,var",
+    [
+        ("adjudicante-analysis.json", "adjudicante"),
+        ("adjudicatario-analysis.json", "adjudicatario"),
+    ],
+)
+def test_entity_dashboards_are_single_select(name: str, var: str) -> None:
+    import json
+
+    variables = json.loads((DASHBOARD_DIR / name).read_text())["templating"]["list"]
+    entry = next(v for v in variables if v["name"] == var)
+    assert entry["multi"] is False
+    assert entry["includeAll"] is False
+
+
+@pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
+def test_value_filter_uses_absolute_value(path: Path) -> None:
+    assert not re.search(r"preco_contratual\s*>=\s*\$\{min_contract_value\}", path.read_text())

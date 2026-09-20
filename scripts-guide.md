@@ -111,7 +111,7 @@ the dashboards have no data.
 docker compose --profile dashboard up -d
 ```
 
-Open `http://127.0.0.1:3001`. Set `GRAFANA_PORT` to change the port. The service provisions four
+Open `http://127.0.0.1:3001`. Set `GRAFANA_PORT` to change the port. The service provisions six
 dashboards from `docker/grafana/`. You do not need to import anything.
 
 | Dashboard | Shows |
@@ -120,12 +120,21 @@ dashboards from `docker/grafana/`. You do not need to import anything.
 | **Contracts** | A row-level table of contracts: objecto, descrição, preço, awardees. The table is capped at 5000 rows and shows the row count. |
 | **Procurement Overview — Municípios** | The overview, scoped to município adjudicantes. |
 | **Contracts — Municípios** | The contract table, scoped to município adjudicantes. |
+| **Analysis by adjudicatário** | One supplier: contracts and value won, buyers, procedure mix, duration and price, and a contract table. |
+| **Analysis by adjudicante** | One buyer: contracts and value, suppliers and concentration, procedure mix, duration and price, and a contract table. |
 
-All four dashboards read `procurement.v_contracts_material`, which leaves out contracts flagged
-`is_below_min_value`. The two Municípios dashboards apply `v.is_municipio` on every panel and
-filter the `adjudicante` dropdown. The `adjudicatário` selector stays unscoped, because a
-município can award a contract to any supplier. All four dashboards accept the `adjudicante` and
-`adjudicatário` selectors and the time-range picker.
+All six dashboards read views over `procurement.v_contracts_material`, which leaves out contracts
+flagged `is_below_min_value`. The two Municípios dashboards apply `v.is_municipio` on every panel
+and filter the `adjudicante` dropdown. The `adjudicatário` selector stays unscoped, because a
+município can award a contract to any supplier.
+
+Every dashboard has a `min_contract_value` selector. It hides contracts where
+`abs(preco_contratual)` is below the chosen value. It uses the absolute value, so large negative
+values stay visible. It works on top of the fixed EUR 10 rule that ingest applies. The default is 10.
+
+The two overview dashboards link to the two analysis dashboards. Click an adjudicante or
+adjudicatário bar to open its analysis dashboard. The link keeps the entity, the
+`min_contract_value` and the time range. The analysis dashboards link to each other in the same way.
 
 ## Development
 

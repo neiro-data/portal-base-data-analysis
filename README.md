@@ -15,7 +15,7 @@ PostgreSQL instead of reading the parquet files directly in Python.*
   and format, mypy in strict mode for types, pytest for tests.
 - **What it does:** it ingests the bulk workbook to parquet (contracts, adjudicantes,
   adjudicatarios). It loads the parquet files into a `procurement` schema in PostgreSQL 17 with
-  `pg_parquet`. It serves four provisioned Grafana dashboards.
+  `pg_parquet`. It serves six provisioned Grafana dashboards.
 - **Entry point:** `src/base_gov/cli.py` (the `base-gov` console script).
 - **Host requirements:** `uv` for the CLI and the checks. Docker and `make` for the database and
   the dashboards.
@@ -68,8 +68,9 @@ See [scripts-guide.md — Bulk ingest: raw and treated](scripts-guide.md#bulk-in
 
 A Docker stack runs PostgreSQL 17 with
 [pg_parquet](https://github.com/CrunchyData/pg_parquet) 0.5.1. It loads the parquet files into
-the `procurement` schema. A Compose profile adds Grafana with four provisioned dashboards: an
-overview, a contract table, and the same two scoped to municípios.
+the `procurement` schema. A Compose profile adds Grafana with six provisioned dashboards: an
+overview, a contract table, the same two scoped to municípios, and one drill-down each for an
+adjudicante and an adjudicatário.
 
 Run the ingest before you start Grafana, or the dashboards show no data.
 

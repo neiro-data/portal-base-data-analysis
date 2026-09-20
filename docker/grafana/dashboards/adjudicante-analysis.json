@@ -1,0 +1,1304 @@
+{
+  "uid": "base-adjudicante",
+  "title": "Analysis by adjudicante",
+  "tags": [
+    "procurement",
+    "entity"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-2y",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Data cutoff",
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "target": {
+          "editorMode": "code",
+          "format": "table",
+          "refId": "Anno",
+          "rawSql": "SELECT max(data_celebracao)::timestamp AS time, 'Data ends here: the current year is year-to-date (partial)' AS text, 'data-cutoff' AS tags FROM procurement.contracts"
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "adjudicante",
+        "label": "Adjudicante",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
+        "description": "Single buyer.",
+        "query": "SELECT name AS __text, entity_id AS __value FROM procurement.entities_adjudicantes ORDER BY name",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "skipUrlSync": false
+      },
+      {
+        "name": "min_contract_value",
+        "label": "Min contract value (EUR)",
+        "type": "custom",
+        "description": "Minimum absolute contract value in EUR. Contracts with abs(preco_contratual) below this are hidden from every panel. It is applied to the absolute value, so large negative values are kept. It works on top of the fixed EUR 10 rule used at ingest (contracts below EUR 10 are already excluded). Options: 0 (no extra filter), 10, 5000, 20000, 75000. The default is 10.",
+        "query": "0,10,5000,20000,75000",
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "options": [
+          {
+            "text": "0",
+            "value": "0",
+            "selected": false
+          },
+          {
+            "text": "10",
+            "value": "10",
+            "selected": true
+          },
+          {
+            "text": "5000",
+            "value": "5000",
+            "selected": false
+          },
+          {
+            "text": "20000",
+            "value": "20000",
+            "selected": false
+          },
+          {
+            "text": "75000",
+            "value": "75000",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "About this dashboard",
+      "type": "text",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Drill-down for one **adjudicante** (buyer). Pick the entity and the minimum contract value at the top. See *Caveats* at the bottom."
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      }
+    },
+    {
+      "id": 3,
+      "title": "Contracts issued",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "id": 4,
+      "title": "Total value",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "One row per contract, so there is no double counting here.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 4,
+        "y": 4
+      }
+    },
+    {
+      "id": 5,
+      "title": "Median contract value",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.preco_contratual) AS median FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Reference medians in the notebooks: EUR 8.8k (Ajuste Direto), 23.3k (Consulta Prévia), 52.0k (Concurso Público).",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 9,
+        "y": 4
+      }
+    },
+    {
+      "id": 6,
+      "title": "Distinct suppliers",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(DISTINCT a.adjudicatario_id) AS suppliers FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 4
+      }
+    },
+    {
+      "id": 7,
+      "title": "Municipality",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN bool_or(v.is_municipio) THEN 'Município' ELSE 'Other entity' END AS type FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 4
+      }
+    },
+    {
+      "id": 8,
+      "title": "Median duration (days)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: d",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.prazo_execucao) AS days FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Notebook medians: Ajuste Direto 56, Consulta Prévia 180, Concurso Público 300 days.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 9,
+      "title": "Median EUR/day",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Defined only for contracts lasting 1-3650 days.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      }
+    },
+    {
+      "id": 10,
+      "title": "Ajuste Direto share (count)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto')::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Portugal-wide, Ajuste Direto is 57.6 % of contracts. Municipal benchmark: about 50 % of contracts (municipio_vs_ajuste_direto.ipynb).",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 11,
+      "title": "Ajuste Direto share (value)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT sum(v.preco_contratual) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(sum(v.preco_contratual), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Portugal-wide, 19.3 % of value. Municipal benchmark: about 12.5 % of value (municipio_vs_ajuste_direto.ipynb).",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Over time",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "id": 13,
+      "title": "Contracts per month",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Edge months are partial: the data covers 2025-2026 only and the current year is year-to-date.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "id": 14,
+      "title": "Contract value per month",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Edge months are partial.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      }
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Who it buys from",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      }
+    },
+    {
+      "id": 16,
+      "title": "Top 15 suppliers by value",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Open supplier",
+              "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${__url_time_range}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total_value"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "adjudicatario_id"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "adjudicatario_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT a.adjudicatario_name AS supplier, sum(a.preco_contratual) AS total_value, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY total_value DESC LIMIT 15"
+        }
+      ],
+      "description": "Click a bar to open the supplier dashboard. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      }
+    },
+    {
+      "id": 17,
+      "title": "Top 15 suppliers by count",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Open supplier",
+              "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${__url_time_range}"
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "contracts"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "adjudicatario_id"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "adjudicatario_id"
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": true,
+                  "legend": true,
+                  "tooltip": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT a.adjudicatario_name AS supplier, count(DISTINCT a.idcontrato) AS contracts, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY contracts DESC LIMIT 15"
+        }
+      ],
+      "description": "Click a bar to open the supplier dashboard. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      }
+    },
+    {
+      "id": 18,
+      "title": "Supplier concentration: top-10 share of value",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh) FILTER (WHERE rn <= 10) AS top10_share FROM t"
+        }
+      ],
+      "description": "Share of this buyer's spend that goes to its 10 largest suppliers. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      }
+    },
+    {
+      "id": 19,
+      "title": "Supplier concentration: HHI",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh * sh) AS hhi FROM t"
+        }
+      ],
+      "description": "Herfindahl-Hirschman index, sum of squared value shares (0-1). Above 0.25 is highly concentrated. Same measure as the concentration tables in procedures_comparison.ipynb. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "How it procures",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      }
+    },
+    {
+      "id": 21,
+      "title": "Procedure family mix: count",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT v.procedure_family AS family, count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 37
+      }
+    },
+    {
+      "id": 22,
+      "title": "Procedure family mix: value",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT v.procedure_family AS family, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 37
+      }
+    },
+    {
+      "id": 23,
+      "title": "Bidders reported (contracts)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL) AS reported FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Contracts where the number of bidders is reported. It is null for more than half of all contracts.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 37
+      }
+    },
+    {
+      "id": 24,
+      "title": "Single-bidder share among reported",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes = 1)::numeric / nullif(count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Denominator: only contracts that report the number of bidders.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 37
+      }
+    },
+    {
+      "id": 25,
+      "title": "Top 15 CPV codes by value",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(v.cpv, '(none)') AS cpv, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY total_value DESC LIMIT 15"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      }
+    },
+    {
+      "id": 26,
+      "title": "Ajuste Direto legal grounds",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(v.fundament_ajuste_direto, '(not reported)') AS \"Fundamento\", count(*) AS \"Contracts\", sum(v.preco_contratual) AS \"Value\" FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.procedure_family = 'ajuste_direto' GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      }
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "Duration & price",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      }
+    },
+    {
+      "id": 28,
+      "title": "Contracts by duration bucket",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT v.duration_bucket AS bucket, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
+        }
+      ],
+      "description": "Duration in days from prazo_execucao. Contracts without a valid duration are excluded.",
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 56
+      }
+    },
+    {
+      "id": 29,
+      "title": "Median EUR/day by duration bucket",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT v.duration_bucket AS bucket, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
+        }
+      ],
+      "description": "Expect a decline: the notebooks report about EUR 336/day for 1-30 day contracts against EUR 19/day for 366-3650 days. valor_por_dia is defined only for 1-3650 day contracts.",
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 56
+      }
+    },
+    {
+      "id": 30,
+      "title": "Value distribution",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN abs(v.preco_contratual) < 1000 THEN '1) < 1k' WHEN abs(v.preco_contratual) < 5000 THEN '2) 1k-5k' WHEN abs(v.preco_contratual) < 20000 THEN '3) 5k-20k' WHEN abs(v.preco_contratual) < 75000 THEN '4) 20k-75k' WHEN abs(v.preco_contratual) < 250000 THEN '5) 75k-250k' ELSE '6) >= 250k' END AS band, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Bands at the informal EUR 5 000 / 20 000 / 75 000 reference thresholds (the ones used in the notebooks), plus 1k and 250k. Very large values may be data-entry errors.",
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "showValue": "auto"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 56
+      }
+    },
+    {
+      "id": 31,
+      "title": "Closed contracts share",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) FILTER (WHERE v.closed_at IS NOT NULL)::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Share of contracts with a closing date. A lower bound as of the export date: later closures are not in the data.",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 65
+      }
+    },
+    {
+      "id": 32,
+      "title": "Price change on closed contracts",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT sum(v.preco_total_efetivo - v.preco_contratual) FILTER (WHERE v.closed_at IS NOT NULL) AS delta FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+        }
+      ],
+      "description": "Sum of (effective total price - contracted price) on closed contracts. A lower bound as of the export date (procurement_analysis.ipynb sections 5 and 7).",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 65
+      }
+    },
+    {
+      "id": 33,
+      "type": "row",
+      "title": "Contracts",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      }
+    },
+    {
+      "id": 34,
+      "title": "Rows shown",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
+        }
+      ],
+      "description": "The table below is capped at LIMIT 5000 rows, newest first; this count makes a silent truncation visible.",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      }
+    },
+    {
+      "id": 35,
+      "title": "Contracts",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "procurement-analytics-pg"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Preço"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Preço efetivo"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "EUR/dia"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyEUR"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Date"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Objecto"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "inspect"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 280
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT v.celebrated_at AS \"Date\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.preco_contratual AS \"Preço\", v.preco_total_efetivo AS \"Preço efetivo\", v.prazo_execucao AS \"Prazo (d)\", v.valor_por_dia AS \"EUR/dia\", v.tipo_procedimento AS \"Procedimento\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
+        }
+      ],
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      }
+    },
+    {
+      "id": 36,
+      "title": "Caveats",
+      "type": "text",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 93
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "- Value totals per contract are exact. The supplier panels read the per-awardee view: a shared contract is counted in full for each awardee.\n- Suppliers are keyed by NIPC. Entries with `-` use a similarity fallback (`token_sort_ratio >= 92`) that may over- or under-merge.\n- Data covers 2025-2026 only. Edge months are partial and the current year is year-to-date.\n- `valor_por_dia` is defined only for contracts lasting 1-3650 days.\n- Very large values may be data-entry errors."
+      }
+    }
+  ]
+}
