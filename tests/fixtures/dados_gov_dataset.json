@@ -1,0 +1,50 @@
+{
+  "slug": "contratos-publicos-portal-base-impic-contratos-de-2012-a-2026",
+  "last_update": "2026-08-23T11:42:24.823000+00:00",
+  "resources": [
+    {
+      "id": "344d19b2-7dcf-4716-aa2d-4cec42a5c834",
+      "title": "contratos2024.xlsx",
+      "format": "xlsx",
+      "mime": "application/octet-stream",
+      "filesize": 57737358,
+      "url": "https://dados.gov.pt/s/resources/x/20260913-114156-a035c665/contratos2024.xlsx",
+      "latest": "https://dados.gov.pt/api/1/datasets/r/344d19b2-7dcf-4716-aa2d-4cec42a5c834",
+      "checksum": {"type": "sha1", "value": "1111111111111111111111111111111111111111"},
+      "last_modified": "2026-09-13T11:41:56.367000+00:00"
+    },
+    {
+      "id": "344d19b2-7dcf-4716-aa2d-4cec42a5c835",
+      "title": "contratos2024.zip",
+      "format": "zip",
+      "mime": "application/octet-stream",
+      "filesize": 46000000,
+      "url": "https://dados.gov.pt/s/resources/x/20260913-114156-a035c665/contratos2024.zip",
+      "latest": "https://dados.gov.pt/api/1/datasets/r/344d19b2-7dcf-4716-aa2d-4cec42a5c835",
+      "checksum": {"type": "sha1", "value": "9999999999999999999999999999999999999999"},
+      "last_modified": "2026-09-13T11:41:56.367000+00:00"
+    },
+    {
+      "id": "aaaaaaaa-7dcf-4716-aa2d-4cec42a5c836",
+      "title": "contratos2025.xlsx",
+      "format": "xlsx",
+      "mime": "application/octet-stream",
+      "filesize": 66900000,
+      "url": "https://dados.gov.pt/s/resources/x/20260913-114207-b035c665/contratos2025.xlsx",
+      "latest": "https://dados.gov.pt/api/1/datasets/r/aaaaaaaa-7dcf-4716-aa2d-4cec42a5c836",
+      "checksum": {"type": "sha1", "value": "2222222222222222222222222222222222222222"},
+      "last_modified": "2026-09-13T11:42:07.100000+00:00"
+    },
+    {
+      "id": "bbbbbbbb-7dcf-4716-aa2d-4cec42a5c837",
+      "title": "contratos2012.xlsx",
+      "format": "xlsx",
+      "mime": "application/octet-stream",
+      "filesize": 16400000,
+      "url": "https://dados.gov.pt/s/resources/x/20260913-113000-c035c665/contratos2012.xlsx",
+      "latest": "https://dados.gov.pt/api/1/datasets/r/bbbbbbbb-7dcf-4716-aa2d-4cec42a5c837",
+      "checksum": {"type": "sha1", "value": "3333333333333333333333333333333333333333"},
+      "last_modified": "2026-09-13T11:30:00.000000+00:00"
+    }
+  ]
+}

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 
-from base_gov import analysis
+from base_gov import analysis, dados_gov
 from base_gov import bulk_ingest as bulk_ingest_module
 from base_gov import entities_db as entities_db_module
 from base_gov.xlsx_ingest import DEFAULT_ROWS, load_contracts
@@ -128,6 +130,86 @@ def bulk_ingest(
     typer.echo(f"wrote {result.contracts_total} contracts into {out}")
     typer.echo(f"wrote {result.adjudicantes_total} adjudicantes into {adjudicantes_out}")
     typer.echo(f"wrote {result.adjudicatarios_total} adjudicatarios into {adjudicatarios_out}")
+
+
+@app.command("download-contracts")
+def download_contracts(
+    years: Annotated[
+        int, typer.Option("--years", help="Most recent N years to fetch (current year included).")
+    ] = dados_gov.DEFAULT_YEARS,
+    year: Annotated[
+        list[int] | None,
+        typer.Option("--year", help="Explicit year (repeatable); overrides --years."),
+    ] = None,
+    from_year: Annotated[
+        int | None, typer.Option("--from-year", help="Earliest year to fetch (backfill only).")
+    ] = None,
+    dest: Annotated[Path, typer.Option("--dest", help="Destination directory.")] = Path(
+        "data/source"
+    ),
+    force: Annotated[
+        bool, typer.Option("--force", help="Ignore the manifest and overwrite local files.")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="List resources and planned action; no downloads.")
+    ] = False,
+    verify_only: Annotated[
+        bool,
+        typer.Option("--verify-only", help="Compare local sha1 to the API; exit 1 on mismatch."),
+    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Download contratosYYYY.xlsx from dados.gov.pt with sha1 verification."""
+    _configure_logging(verbose)
+    with dados_gov.make_client() as client:
+        selected = dados_gov.select_years(
+            dados_gov.list_resources(client=client), years=years, only=year, from_year=from_year
+        )
+        if not selected:
+            typer.echo("no matching resources", err=True)
+            raise typer.Exit(1)
+
+        if dry_run or verify_only:
+            mismatches = 0
+            typer.echo(f"{'year':<6} {'size':<9} {'last_modified':<21} action")
+            for res in selected:
+                state = dados_gov.verify_local(res, dados_gov.target_path(res, dest))
+                if state == "mismatch":
+                    mismatches += 1
+                action = {
+                    "absent": "would download",
+                    "match": "unchanged (local sha1 match)",
+                    "mismatch": "would replace",
+                }[state]
+                stamp = res.last_modified.strftime("%Y-%m-%dT%H:%M:%SZ")
+                typer.echo(
+                    f"{res.year:<6} {res.filesize / 1e6:>6.1f} MB {stamp:<21} {action}"
+                    f"  sha1={res.sha1}"
+                )
+            if verify_only and mismatches:
+                raise typer.Exit(1)
+            return
+
+        manifest_path = dest.parent / "manifest.json"
+        manifest = dados_gov.read_manifest(manifest_path)
+        failures = 0
+        for index, res in enumerate(selected):
+            try:
+                result = dados_gov.download(
+                    res, dest, manifest=manifest, force=force, client=client
+                )
+            except (dados_gov.DadosGovError, httpx.HTTPError) as exc:
+                failures += 1
+                typer.echo(f"{res.year}: failed: {exc}", err=True)
+                continue
+            dados_gov.write_manifest(manifest_path, manifest)
+            typer.echo(
+                f"{res.year}: {result.status} ({result.bytes_written} bytes) -> {result.path}"
+            )
+            if result.status == "downloaded" and index < len(selected) - 1:
+                time.sleep(1.0)
+        if failures:
+            raise typer.Exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover
