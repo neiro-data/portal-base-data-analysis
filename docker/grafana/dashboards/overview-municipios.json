@@ -6,6 +6,22 @@
   "editable": false,
   "timezone": "utc",
   "time": { "from": "now-90d", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Data cutoff",
+        "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
+        "enable": true,
+        "iconColor": "orange",
+        "target": {
+          "editorMode": "code",
+          "format": "table",
+          "refId": "Anno",
+          "rawSql": "SELECT max(data_celebracao)::timestamp AS time, 'Data ends here: the current year is year-to-date (partial)' AS text, 'data-cutoff' AS tags FROM procurement.contracts"
+        }
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
