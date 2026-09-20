@@ -198,6 +198,35 @@ def test_material_view_defined_over_enriched() -> None:
     assert "WHERE" not in enriched.group(1)
 
 
+def test_enriched_view_exposes_notebook_columns() -> None:
+    text = (SQL_DIR / "005_procurement_dashboard_views.sql").read_text()
+    for col in (
+        "prazo_execucao",
+        "valor_por_dia",
+        "preco_total_efetivo",
+        "procedure_family",
+        "duration_bucket",
+    ):
+        assert col in text
+
+
+def test_procedure_family_families_are_the_notebook_four() -> None:
+    text = (SQL_DIR / "005_procurement_dashboard_views.sql").read_text()
+    for token in ("ajuste direto", "concurso publico", "consulta previa", "'other'"):
+        assert token in text
+
+
+def test_valor_por_dia_is_not_recomputed_in_sql() -> None:
+    for path in SQL_DIR.rglob("*.sql"):
+        assert not re.search(r"preco_contratual\s*/\s*prazo_execucao", path.read_text()), path
+
+
+def test_adjudicatario_view_is_defined_over_material() -> None:
+    code = _sql_code(SQL_DIR / "008_entity_dashboard_views.sql")
+    assert "v_contracts_material" in code
+    assert "v_contracts_enriched" not in code
+
+
 DASHBOARD_FILES = sorted(DASHBOARD_DIR.glob("*.json"))
 
 

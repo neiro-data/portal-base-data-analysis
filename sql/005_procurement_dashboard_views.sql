@@ -45,14 +45,48 @@ SELECT
     c.tipo_procedimento,
     c.n_concorrentes,
     c.first_ingested_at,
-    c.updated_at
+    c.updated_at,
+    c.preco_total_efetivo,
+    c.preco_base_procedimento,
+    c.data_fecho::timestamp                              AS closed_at,
+    c.prazo_execucao,
+    c.valor_por_dia,
+    c.fundament_ajuste_direto,
+    c.adjudicatario_pmes,
+    -- Procedure family, the notebooks' primary grouping (procedures_comparison.ipynb).
+    -- Accent-folded + lowercased prefix match; `unaccent` is not installed (see 001), so
+    -- translate() does the folding. Anything unmatched is 'other' (framework agreements,
+    -- excluded contracting, concurso limitado / de conceção, ...).
+    CASE
+        WHEN translate(lower(c.tipo_procedimento),
+                       'áàâãéèêíìóòôõúùç', 'aaaaeeeiioooouuc')
+             LIKE 'ajuste direto%'    THEN 'ajuste_direto'
+        WHEN translate(lower(c.tipo_procedimento),
+                       'áàâãéèêíìóòôõúùç', 'aaaaeeeiioooouuc')
+             LIKE 'concurso publico%' THEN 'concurso_publico'
+        WHEN translate(lower(c.tipo_procedimento),
+                       'áàâãéèêíìóòôõúùç', 'aaaaeeeiioooouuc')
+             LIKE 'consulta previa%'  THEN 'consulta_previa'
+        ELSE 'other'
+    END                                                  AS procedure_family,
+    -- Duration buckets used by procedures_comparison.ipynb's EUR/day breakdown.
+    -- NULL outside 1..3650 days, exactly like valor_por_dia (see src/base_gov/stats.py).
+    CASE
+        WHEN c.prazo_execucao BETWEEN    1 AND   30 THEN '1-30'
+        WHEN c.prazo_execucao BETWEEN   31 AND   90 THEN '31-90'
+        WHEN c.prazo_execucao BETWEEN   91 AND  180 THEN '91-180'
+        WHEN c.prazo_execucao BETWEEN  181 AND  365 THEN '181-365'
+        WHEN c.prazo_execucao BETWEEN  366 AND 3650 THEN '366-3650'
+        ELSE NULL
+    END                                                  AS duration_bucket
 FROM procurement.contracts c;
 
 COMMENT ON VIEW procurement.v_contracts_enriched IS
     'One row per contract with adjudicante_id/adjudicante_name resolved and '
     'celebrated_at/published_at cast to timestamp (IMMUTABLE, index-usable; '
-    'source columns are plain dates) for $__timeFilter(); the single surface '
-    'every dashboard panel reads.';
+    'source columns are plain dates) for $__timeFilter(), plus the notebook '
+    'columns (prazo_execucao, valor_por_dia, ...) and procedure_family / '
+    'duration_bucket; the single surface every dashboard panel reads.';
 
 -- Default-exclusion surface: what the notebooks analyse and every dashboard panel reads.
 -- v_contracts_enriched stays unfiltered so "what did we exclude?" is answerable in SQL.
