@@ -53,7 +53,9 @@ def test_adjudicantes_strips_trailing_newline_before_matching() -> None:
         [
             {
                 "idcontrato": 3,
-                "adjudicante": "509521584 - Nazaré Forma - Ensino, Formação e Certificação, Lda.\r\n",
+                "adjudicante": (
+                    "509521584 - Nazaré Forma - Ensino, Formação e Certificação, Lda.\r\n"
+                ),
                 "adjudicatarios": "517304660 - Sítio dos Arados Lda",
                 "precoContratual": 1000.0,
                 "tipoContrato": "Aquisição de serviços",
