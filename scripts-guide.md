@@ -2,6 +2,16 @@
 
 Every command in this project, grouped by target. Referenced from [README.md](README.md).
 
+## Download contracts
+
+```bash
+bin/download-contracts.sh --dry-run    # wraps `uv run base-gov download-contracts`
+BACKFILL_CONFIRM=yes-download-all-years bin/backfill-contracts.sh   # all years from 2012
+```
+
+`bin/download-contracts.sh` passes all options through. `bin/backfill-contracts.sh` refuses to
+run without the `BACKFILL_CONFIRM` variable.
+
 ## Bulk xlsx ingest, capped
 
 `data/contratos2025.xlsx` is the portal's own bulk export. These two commands read it locally.

@@ -29,11 +29,25 @@ uv sync                                                            # install
 uv run base-gov xlsx-analyze                                       # summarise the workbook
 ```
 
-Download `data/contratos2025.xlsx` from the BASE portal by hand first — see
+Download the workbooks first with `uv run base-gov download-contracts`. The command reads the
+dados.gov.pt API and writes `data/source/contratosYYYY.xlsx`. See
 [README_AGENT.md — Where the data comes from](README_AGENT.md#where-the-data-comes-from).
 
 For every other command — the bulk ingest, the database, the dashboards, and the development
 tasks — see **[scripts-guide.md](scripts-guide.md)**.
+
+## Download contracts
+
+`uv run base-gov download-contracts` gets `contratosYYYY.xlsx` from the dados.gov.pt API into
+`data/source/`. Each file is checked against the sha1 that the API publishes. The command writes
+the result to `data/manifest.json`, and a run skips a file that did not change.
+
+Flags: `--years N` (default 3), `--year Y` (repeatable), `--from-year Y`, `--dest PATH`,
+`--force`, `--dry-run`, `--verify-only`, `--verbose`.
+
+A local file with a different sha1 is replaced after a verified download.
+`bin/backfill-contracts.sh` downloads every year from 2012. It stops unless you set
+`BACKFILL_CONFIRM=yes-download-all-years`.
 
 ## Bulk ingest
 
@@ -73,7 +87,7 @@ Full table and view reference, the migration list, and the pipeline are in **[SC
 ## Layout
 
 ```
-bin/                    ingest-contracts.sh (xlsx → parquet), ingest-postgres.sh (parquet → PostgreSQL)
+bin/                    download-contracts.sh, backfill-contracts.sh, ingest-contracts.sh (xlsx → parquet), ingest-postgres.sh (parquet → PostgreSQL)
 docker/                 postgres (pg_parquet build) + grafana provisioning and dashboards
 docker-compose.yml      postgres service + grafana (profile: dashboard)
 notebooks/              exploratory analysis notebooks, run over the parquet files directly
