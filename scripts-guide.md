@@ -5,17 +5,24 @@ Every command in this project, grouped by target. Referenced from [README.md](RE
 ## Download contracts
 
 ```bash
-bin/download-contracts.sh --dry-run    # wraps `uv run base-gov download-contracts`
-BACKFILL_CONFIRM=yes-download-all-years bin/backfill-contracts.sh   # all years from 2012
+uv run base-gov download-contracts                # last 3 years -> data/source/
+uv run base-gov download-contracts --dry-run      # list resources and planned action
+uv run base-gov download-contracts --verify-only  # compare local sha1 to the API; exit 1 on mismatch
+uv run base-gov download-contracts --year 2025 --force
 ```
 
-`bin/download-contracts.sh` passes all options through. `bin/backfill-contracts.sh` refuses to
-run without the `BACKFILL_CONFIRM` variable.
+Flags: `--years N` (default 3), `--year Y` (repeatable, overrides `--years`), `--from-year Y`,
+`--dest PATH`, `--force`, `--dry-run`, `--verify-only`, `--verbose`. Results go to
+`data/manifest.json`. `bin/download-contracts.sh` wraps the command and passes all options through.
+
+`bin/backfill-contracts.sh` downloads every year from 2012. It refuses to run without
+`BACKFILL_CONFIRM=yes-download-all-years`. Do not run it: the project scope is three years, and
+older workbooks are large. It is a guarded escape hatch only.
 
 ## Bulk xlsx ingest, capped
 
-`data/contratos2025.xlsx` is the portal's own bulk export. These two commands read it locally.
-Each read is capped at `--rows`, default **1000**. These commands never read the full 66 MB file.
+These two commands read a workbook locally. Each read is capped at `--rows`, default **1000**.
+They never read a full workbook.
 
 ```bash
 uv run base-gov xlsx-analyze                        # summary statistics
@@ -31,7 +38,7 @@ count. All numbers come from the capped read.
 `data/entities_adjudicantes.parquet` and `data/entities_adjudicatarios.parquet`. The writes are
 upserts. A new run merges with the data on disk and deduplicates again. It never duplicates rows.
 
-## Bulk xlsx ingest, uncapped
+## Bulk ingest: raw and treated
 
 `bin/ingest-contracts.sh` wraps `uv run base-gov bulk-ingest`. It passes all options through.
 This is the only path in the project that reads the workbook without the `--rows` cap.
@@ -60,6 +67,8 @@ from *all* raw years together (the fuzzy `adjudicante_key` is dataset-wide). It 
   can be lower than `read`.
 - `--rebuild` deletes the treated and entity parquets and rebuilds from `data/raw/` without
   reading any xlsx. A new treated column re-hashes every row once (a one-time mass `updated`).
+- The command prints a per-year summary: read, ingested, new, updated, and `below_min`.
+  `below_min` counts flagged rows. It is not a deduction from `ingested`.
 - 2026 is year-to-date: do not read its totals as a full year.
 - `--xlsx` still works but is deprecated; use `--source-dir`.
 
@@ -112,7 +121,8 @@ dashboards from `docker/grafana/`. You do not need to import anything.
 | **Procurement Overview — Municípios** | The overview, scoped to município adjudicantes. |
 | **Contracts — Municípios** | The contract table, scoped to município adjudicantes. |
 
-The two Municípios dashboards apply `v.adjudicante_name ILIKE '%munic%pio%'` on every panel and
+All four dashboards read `procurement.v_contracts_material`, which leaves out contracts flagged
+`is_below_min_value`. The two Municípios dashboards apply `v.is_municipio` on every panel and
 filter the `adjudicante` dropdown. The `adjudicatário` selector stays unscoped, because a
 município can award a contract to any supplier. All four dashboards accept the `adjudicante` and
 `adjudicatário` selectors and the time-range picker.

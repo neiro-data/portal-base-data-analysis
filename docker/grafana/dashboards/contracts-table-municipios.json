@@ -13,7 +13,7 @@
         "label": "Adjudicante",
         "type": "query",
         "datasource": { "type": "postgres", "uid": "procurement-analytics-pg" },
-        "query": "SELECT name AS __text, entity_id AS __value FROM procurement.entities_adjudicantes WHERE name ILIKE '%munic%pio%' ORDER BY name",
+        "query": "SELECT min(v.adjudicante_name) AS __text, v.adjudicante_id AS __value FROM procurement.v_contracts_material v WHERE v.is_municipio AND v.adjudicante_id IS NOT NULL GROUP BY v.adjudicante_id ORDER BY 1",
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -52,7 +52,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_enriched v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' LIMIT 5000) t"
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio LIMIT 5000) t"
         }
       ]
     },
@@ -92,7 +92,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_enriched v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.adjudicante_name ILIKE '%munic%pio%' ORDER BY v.celebrated_at DESC LIMIT 5000"
+          "rawSql": "SELECT v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio ORDER BY v.celebrated_at DESC LIMIT 5000"
         }
       ]
     }

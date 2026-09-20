@@ -5,9 +5,10 @@
 This project analyses public procurement data from Portugal's
 [BASE portal](https://www.base.gov.pt/base4). The goal is to open-source the collected data.
 
-The portal publishes no API. The source is its own `.xlsx` bulk export, downloaded by hand,
-converted once to parquet, and queried from there. A local PostgreSQL stack loads that parquet
-into a `procurement` schema and Grafana renders it. *Future direction: query the source data from
+BASE has no API of its own, but dados.gov.pt republishes its yearly `.xlsx` bulk export. The CLI
+downloads the three most recent years (default cap) from that API, converts each to a raw parquet
+file, and builds one treated parquet. A local PostgreSQL stack loads the treated parquet into a
+`procurement` schema and Grafana renders it. *Future direction: query the source data from
 PostgreSQL instead of reading the parquet files directly in Python.*
 
 - **Stack:** Python 3.12, [uv](https://docs.astral.sh/uv/), polars, typer. ruff for lint
@@ -26,11 +27,12 @@ If you are an AI agent, read also [README_AGENT.md](README_AGENT.md).
 
 ```bash
 uv sync                                                            # install
-uv run base-gov xlsx-analyze                                       # summarise the workbook
+uv run base-gov download-contracts                                 # data/source/contratosYYYY.xlsx
+bin/ingest-contracts.sh --year 2024 --year 2025 --year 2026        # raw + treated parquet
 ```
 
-Download the workbooks first with `uv run base-gov download-contracts`. The command reads the
-dados.gov.pt API and writes `data/source/contratosYYYY.xlsx`. See
+`download-contracts` reads the dados.gov.pt API and writes `data/source/contratosYYYY.xlsx`. Run
+it before `bulk-ingest`. See
 [README_AGENT.md — Where the data comes from](README_AGENT.md#where-the-data-comes-from).
 
 For every other command — the bulk ingest, the database, the dashboards, and the development
@@ -51,13 +53,16 @@ A local file with a different sha1 is replaced after a verified download.
 
 ## Bulk ingest
 
-`data/contratos2025.xlsx` is the portal's own bulk export, about 66 MB. Two commands read it with
-a row cap, default 1000. One script, `bin/ingest-contracts.sh`, reads it without the cap and
-writes `data/contracts.parquet`.
+Three years are in scope (2024, 2025, 2026; 2026 is year-to-date). `bin/ingest-contracts.sh`
+works in two layers. **Raw:** each `data/source/contratos<YEAR>.xlsx` becomes
+`data/raw/contracts_raw_<YEAR>.parquet`, columns verbatim. **Treated:** `data/contracts.parquet`
+is built from all raw years together. Contracts under EUR 10 are flagged
+(`is_below_min_value`), not dropped.
 
-The uncapped read peaks near 2 to 4 GB RSS, because calamine materializes the whole sheet.
+`xlsx-analyze` and `xlsx-entities` still read one workbook with a row cap, default 1000. The
+uncapped read peaks near 2 to 4 GB RSS per workbook, because calamine materializes the whole sheet.
 
-See [scripts-guide.md — Bulk xlsx ingest, uncapped](scripts-guide.md#bulk-xlsx-ingest-uncapped).
+See [scripts-guide.md — Bulk ingest: raw and treated](scripts-guide.md#bulk-ingest-raw-and-treated).
 
 ## Database and dashboards
 
@@ -91,10 +96,11 @@ bin/                    download-contracts.sh, backfill-contracts.sh, ingest-con
 docker/                 postgres (pg_parquet build) + grafana provisioning and dashboards
 docker-compose.yml      postgres service + grafana (profile: dashboard)
 notebooks/              exploratory analysis notebooks, run over the parquet files directly
-sql/                    schema, views and indexes (001-006); sql/ingest/ holds the load steps
+sql/                    schema, views and indexes (001-007); sql/ingest/ holds the load steps
 src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + the `base-gov` CLI
 tests/                  pytest suite, no database required
-data/                   csv/, parquet/, the source workbook - gitignored
+data/                   gitignored: source/ (xlsx), raw/ (raw parquet), contracts.parquet,
+                        entity parquets, manifest.json (download checksums)
 README.md               this file - what it is and the first run
 scripts-guide.md        every command, grouped by target
 SCHEMA.md               the data model reference

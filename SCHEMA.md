@@ -6,11 +6,10 @@ the views that the dashboards read. Referenced from [README.md](README.md).
 ## Pipeline
 
 ```
-data/source/contratos<YEAR>.xlsx  --bulk-ingest-->  data/raw/*.parquet  -->  data/contracts.parquet
-data/*.parquet                             --pg_parquet COPY-->  procurement.*  --views-->  Grafana
+dados.gov.pt API -> data/source/*.xlsx -> data/raw/*.parquet -> data/contracts.parquet -> procurement.* -> Grafana
 ```
 
-The PostgreSQL load reads only the parquet files. See [scripts-guide.md](scripts-guide.md) for
+The PostgreSQL load reads only the treated and entity parquet files. See [scripts-guide.md](scripts-guide.md) for
 the commands of each stage.
 
 ## Parquet files
@@ -22,13 +21,23 @@ the commands of each stage.
 | `data/entities_adjudicantes.parquet` | One row per contracting entity. | `xlsx-entities`, `bulk-ingest` |
 | `data/entities_adjudicatarios.parquet` | One row per contracted entity. | `xlsx-entities`, `bulk-ingest` |
 
+### Raw vs treated
+
+- **Raw** (`data/raw/contracts_raw_<YEAR>.parquet`): the workbook columns verbatim, one file per
+  year. Nothing is dropped or derived.
+- **Treated** (`data/contracts.parquet`): built from all raw years together. It adds derived
+  columns (`ano`, `n_concorrentes`, `is_municipio`, `valor_por_dia`), `row_hash`, the two
+  timestamps and `is_below_min_value`. It reads parquet, not xlsx.
+- 2026 is a partial, year-to-date file. Do not compare its totals with a full year.
+
 ### Deduplication rules
 
 Contracts and entities deduplicate in opposite directions, on purpose.
 
 - **Contracts use `keep="last"`.** BASE amends a row after the signature. Fields such as
   `dataFechoContrato` and `PrecoTotalEfetivo` fill in later. The most recent version of an
-  `idcontrato` is therefore the correct one.
+  `idcontrato` is therefore the correct one. Whether that row counts as changed is decided by
+  `row_hash` (see `contracts` below), not by the position of the row.
 - **Entities use `keep="first"`.** The name that an entity had when it was first seen is treated
   as stable.
 
@@ -56,7 +65,21 @@ The fact table. The grain is one row per contract, keyed on `idcontrato`.
 | `data_fecho` | `date` | Source column `dataFechoContrato`. Nullable. |
 | `tipo_contrato`, `cpv`, `nuts`, `ano` | `text` / `integer` | `cpv` and `ano` are indexed. |
 | `prazo_execucao`, `adjudicatario_pmes` | `integer` | |
-| `ingested_at`, `updated_at` | `timestamptz` | Default `now()`. |
+| `preco_base_procedimento`, `tipo_procedimento`, `fundament_ajuste_direto` | `numeric(18,2)` / `text` | Added by 007. `tipo_procedimento` is indexed. |
+| `n_concorrentes`, `valor_por_dia` | `integer` / `numeric(18,2)` | Added by 007. Derived in the treated parquet. |
+| `is_municipio` | `boolean` | Added by 007. Partial index where true. |
+| `is_below_min_value` | `boolean` | Added by 007. The EUR 10 flag, see below. |
+| `row_hash` | `bigint` | Added by 007. Hash of the treated content columns, from the parquet. |
+| `first_ingested_at`, `updated_at` | `timestamptz` | No default. Both come from the parquet. |
+
+**Timestamp semantics.** `first_ingested_at` is the renamed `ingested_at`. It is set once and
+never changes in `ON CONFLICT`. `updated_at` and the content columns change only when `row_hash`
+or `is_below_min_value` differs from the loaded row, so a reload of unchanged data leaves
+`updated_at` alone. The database no longer stamps `now()`.
+
+**The EUR 10 rule is a flag, not a filter.** Rows with `|preco_contratual|` under 10 (or a null
+price) load with `is_below_min_value = true`. Nothing is dropped from the table.
+`v_contracts_material` leaves them out; `v_contracts_enriched` keeps them.
 
 ### `entities_adjudicantes`, `entities_adjudicatarios`
 
@@ -74,7 +97,8 @@ inside the packed source string. The foreign key to `contracts` cascades on dele
 | --- | --- | --- |
 | `entities_all` | `sql/003_views.sql` | Both entity tables in one relation, with a `role` column. |
 | `contracts_enriched` | `sql/003_views.sql` | `contracts` plus `adjudicante_display_name` from the adjudicante table. |
-| `v_contracts_enriched` | `sql/005_procurement_dashboard_views.sql` | The single surface that every Grafana panel reads. |
+| `v_contracts_enriched` | `sql/005_procurement_dashboard_views.sql` | The unfiltered base view. It also exposes `is_municipio`, `is_below_min_value`, `tipo_procedimento`, `n_concorrentes`, `first_ingested_at`, `updated_at`. |
+| `v_contracts_material` | `sql/005_procurement_dashboard_views.sql` | `v_contracts_enriched` where `NOT is_below_min_value`. Every dashboard panel reads it. |
 | `v_contract_adjudicatario` | `sql/005_procurement_dashboard_views.sql` | The awardee selector for the dashboards. |
 
 ### Why two enriched views
@@ -98,19 +122,32 @@ columns are plain calendar dates, so no timezone meaning is lost.
 | File | Content |
 | --- | --- |
 | `001_extensions.sql` | The `pg_parquet` extension and the `procurement` schema. |
-| `002_schema.sql` | The four tables and five indexes. |
+| `002_schema.sql` | The four tables and five indexes, plus the warm-volume upgrade of `contracts`. |
 | `003_views.sql` | `entities_all`, `contracts_enriched`. |
 | `004_grafana_role.sql` | The read-only `grafana_reader` role and its default privileges. |
-| `005_procurement_dashboard_views.sql` | The two dashboard views. |
+| `005_procurement_dashboard_views.sql` | The three dashboard views. |
 | `006_timestamp_cast_indexes.sql` | The expression indexes for the timestamp casts. |
+| `007_ingestion_metadata.sql` | Guarded rename `ingested_at` -> `first_ingested_at`, drops both timestamp defaults, adds the treated columns and three indexes. `002` applies the same statements so `005` resolves on a warm volume. |
 
 `sql/ingest/` holds the load steps that `bin/ingest-postgres.sh` runs: `10_stage_entities.sql`,
 `20_stage_contracts.sql`, `30_rebuild_bridge.sql`.
 
-The numbers have no gaps and no duplicates: 001 to 006, and 10/20/30.
+The numbers have no gaps and no duplicates: 001 to 007, and 10/20/30.
 
 `004_grafana_role.sql` grants `SELECT` on every table and view that the owner role creates in
-the schema afterwards. The two views of 005 need no separate grant.
+the schema afterwards. The views of 005 need no separate grant.
+
+## Verification status
+
+Not yet done. The migrations and the load are covered by database-free tests only. These have
+**not** been executed:
+
+- The one-off wipe-and-reprocess runbook (delete the old data, re-ingest 2024-2026, reload).
+- `make init-db` twice on a warm volume, and the `bin/ingest-postgres.sh` load against it.
+- Opening the four dashboards, and `EXPLAIN` on the new material index.
+- The pg_parquet check that the treated `UInt32` columns COPY into `bigint`.
+
+Do not read the acceptance figures for this change as measured.
 
 ## Data notes
 
