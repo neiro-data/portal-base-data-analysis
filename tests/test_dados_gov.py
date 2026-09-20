@@ -565,6 +565,66 @@ def test_cli_list_resources_failure_exits_1_cleanly(
     assert isinstance(result.exception, SystemExit)
 
 
+def test_cli_verify_only_absent_file_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    result = CliRunner().invoke(
+        app,
+        ["download-contracts", "--verify-only", "--year", "2024", "--dest", str(tmp_path / "s")],
+    )
+    assert result.exit_code == 1
+    assert "MISSING locally" in result.output
+
+
+def test_cli_unpublished_requested_year_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload())
+    result = CliRunner().invoke(
+        app,
+        [
+            "download-contracts",
+            "--dry-run",
+            "--year",
+            "2024",
+            "--year",
+            "1999",
+            "--dest",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "1999" in result.output
+
+
+def test_cli_from_year_alone_overrides_default_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload())
+    result = CliRunner().invoke(
+        app, ["download-contracts", "--dry-run", "--from-year", "2012", "--dest", str(tmp_path)]
+    )
+    assert "2012" in result.output and "2025" in result.output
+
+
+def test_cli_dry_run_reports_force_and_detects_local_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _serve(monkeypatch, _sha1_payload("contratos2024.xlsx"))
+    dest = tmp_path / "source"
+    args = ["download-contracts", "--year", "2024", "--dest", str(dest)]
+    assert CliRunner().invoke(app, args).exit_code == 0
+    forced = CliRunner().invoke(app, [*args, "--dry-run", "--force"])
+    assert "would re-download" in forced.output
+    (dest / "contratos2024.xlsx").write_bytes(b"edited after download")
+    rerun = CliRunner().invoke(
+        app, args
+    )  # manifest still lists our sha1; the file is hashed anyway
+    assert "downloaded" in rerun.output
+    assert (dest / "contratos2024.xlsx").read_bytes() == BODY
+
+
 def test_backfill_script_refuses_without_env_var() -> None:
     script = Path(__file__).parent.parent / "bin" / "backfill-contracts.sh"
     env = {k: v for k, v in os.environ.items() if k != "BACKFILL_CONFIRM"}

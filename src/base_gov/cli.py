@@ -190,7 +190,8 @@ def download_contracts(
         typer.Option("--year", help="Explicit year (repeatable); overrides --years."),
     ] = None,
     from_year: Annotated[
-        int | None, typer.Option("--from-year", help="Earliest year to fetch (backfill only).")
+        int | None,
+        typer.Option("--from-year", help="Fetch every year from this one on; overrides --years."),
     ] = None,
     dest: Annotated[Path, typer.Option("--dest", help="Destination directory.")] = Path(
         "data/source"
@@ -203,7 +204,10 @@ def download_contracts(
     ] = False,
     verify_only: Annotated[
         bool,
-        typer.Option("--verify-only", help="Compare local sha1 to the API; exit 1 on mismatch."),
+        typer.Option(
+            "--verify-only",
+            help="Compare local sha1 to the API; exit 1 on mismatch or missing file.",
+        ),
     ] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
@@ -223,25 +227,31 @@ def download_contracts(
         if not selected:
             typer.echo("no matching resources", err=True)
             raise typer.Exit(1)
+        missing = sorted(set(year or []) - {r.year for r in selected})
+        if missing:
+            typer.echo(f"years not published on dados.gov.pt: {missing}", err=True)
+            raise typer.Exit(1)
 
         if dry_run or verify_only:
-            mismatches = 0
+            problems = 0
             typer.echo(f"{'year':<6} {'size':<9} {'last_modified':<21} action")
             for res in selected:
                 state = dados_gov.verify_local(res, dados_gov.target_path(res, dest))
-                if state == "mismatch":
-                    mismatches += 1
+                if state != "match":
+                    problems += 1
                 action = {
-                    "absent": "would download",
-                    "match": "unchanged (local sha1 match)",
-                    "mismatch": "would replace",
+                    "absent": "MISSING locally" if verify_only else "would download",
+                    "match": "would re-download (--force)"
+                    if force and not verify_only
+                    else "unchanged (local sha1 match)",
+                    "mismatch": "LOCAL MISMATCH" if verify_only else "would replace",
                 }[state]
                 stamp = res.last_modified.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
                 typer.echo(
                     f"{res.year:<6} {res.filesize / 1e6:>6.1f} MB {stamp:<21} {action}"
                     f"  sha1={res.sha1}"
                 )
-            if verify_only and mismatches:
+            if verify_only and problems:
                 raise typer.Exit(1)
             return
 
