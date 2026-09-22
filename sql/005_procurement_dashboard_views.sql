@@ -23,6 +23,9 @@
 -- CREATE OR REPLACE VIEW cannot change an existing column's data type, so the
 -- DROP below is required before recreating with the new (timestamp) type.
 -- v_contracts_material depends on v_contracts_enriched, so it is dropped first.
+-- 008's v_adjudicatario_contracts selects from v_contracts_material; drop it first
+-- (008 recreates it later in the same init-db run).
+DROP VIEW IF EXISTS procurement.v_adjudicatario_contracts;
 DROP VIEW IF EXISTS procurement.v_contracts_material;
 DROP VIEW IF EXISTS procurement.v_contracts_enriched;
 
@@ -30,7 +33,10 @@ CREATE VIEW procurement.v_contracts_enriched AS
 SELECT
     c.idcontrato,
     c.adjudicante_nipc                                   AS adjudicante_id,
-    coalesce(c.adjudicante_name, c.adjudicante)          AS adjudicante_name,
+    -- Canonical name per NIPC from the entity table: the per-contract raw name varies in
+    -- spelling/case across contracts (e.g. 'MUNICÍPIO DO X' vs 'Município do X'), which
+    -- split GROUP BY name panels. Raw name only when the NIPC has no entity row.
+    coalesce(e.name, c.adjudicante_name, c.adjudicante)  AS adjudicante_name,
     c.objecto_contrato,
     c.desc_contrato,
     c.preco_contratual,
@@ -79,7 +85,8 @@ SELECT
         WHEN c.prazo_execucao BETWEEN  366 AND 3650 THEN '366-3650'
         ELSE NULL
     END                                                  AS duration_bucket
-FROM procurement.contracts c;
+FROM procurement.contracts c
+LEFT JOIN procurement.entities_adjudicantes e ON e.entity_id = c.adjudicante_nipc;
 
 COMMENT ON VIEW procurement.v_contracts_enriched IS
     'One row per contract with adjudicante_id/adjudicante_name resolved and '
@@ -97,15 +104,34 @@ COMMENT ON VIEW procurement.v_contracts_material IS
     'v_contracts_enriched minus contracts flagged is_below_min_value (the EUR 10 rule); '
     'the surface every dashboard panel reads.';
 
--- Bridge surface, one row per (contract, awardee). Thin passthrough over
--- procurement.contract_adjudicatarios, which already carries the awardee's
--- name denormalized onto the bridge row — no join needed.
+-- One canonical name per awardee NIPC. The bridge row's denormalized name varies in
+-- spelling/case across contracts for the same NIPC (e.g. 'ACCENTURE, ...' vs
+-- 'Accenture ...'), which split GROUP BY name panels. entities_adjudicatarios wins;
+-- NIPCs missing from it fall back to min(bridge name). Anti-join + hash join keeps
+-- full-scan panels at the old cost (a correlated subquery tripled it).
+CREATE OR REPLACE VIEW procurement.v_adjudicatario_name AS
+SELECT entity_id, name
+FROM procurement.entities_adjudicatarios
+UNION ALL
+SELECT b.entity_id, min(b.name)
+FROM procurement.contract_adjudicatarios b
+WHERE NOT EXISTS (
+    SELECT 1 FROM procurement.entities_adjudicatarios e WHERE e.entity_id = b.entity_id
+)
+GROUP BY b.entity_id;
+
+COMMENT ON VIEW procurement.v_adjudicatario_name IS
+    'One canonical name per adjudicatario NIPC: entities_adjudicatarios, else '
+    'min(contract_adjudicatarios.name). Join target for every adjudicatario_name.';
+
+-- Bridge surface, one row per (contract, awardee), with the canonical name.
 CREATE OR REPLACE VIEW procurement.v_contract_adjudicatario AS
 SELECT
-    idcontrato,
-    entity_id AS adjudicatario_id,
-    name      AS adjudicatario_name
-FROM procurement.contract_adjudicatarios;
+    b.idcontrato,
+    b.entity_id               AS adjudicatario_id,
+    coalesce(n.name, b.name)  AS adjudicatario_name
+FROM procurement.contract_adjudicatarios b
+LEFT JOIN procurement.v_adjudicatario_name n ON n.entity_id = b.entity_id;
 
 COMMENT ON VIEW procurement.v_contract_adjudicatario IS
     'One row per (contract, awardee), for the adjudicatario selector and the '

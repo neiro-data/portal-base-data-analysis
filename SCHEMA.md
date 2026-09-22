@@ -97,12 +97,13 @@ inside the packed source string. The foreign key to `contracts` cascades on dele
 | --- | --- | --- |
 | `entities_all` | `sql/003_views.sql` | Both entity tables in one relation, with a `role` column. |
 | `contracts_enriched` | `sql/003_views.sql` | `contracts` plus `adjudicante_display_name` from the adjudicante table. |
-| `v_contracts_enriched` | `sql/005_procurement_dashboard_views.sql` | The unfiltered base view. It also exposes `is_municipio`, `is_below_min_value`, `tipo_procedimento`, `n_concorrentes`, `first_ingested_at`, `updated_at`, plus `prazo_execucao`, `valor_por_dia`, `preco_total_efetivo`, `preco_base_procedimento`, `closed_at`, `fundament_ajuste_direto`, `adjudicatario_pmes`. |
+| `v_contracts_enriched` | `sql/005_procurement_dashboard_views.sql` | The unfiltered base view. `adjudicante_name` is the name in `entities_adjudicantes`, else the raw contract name. It also exposes `is_municipio`, `is_below_min_value`, `tipo_procedimento`, `n_concorrentes`, `first_ingested_at`, `updated_at`, plus `prazo_execucao`, `valor_por_dia`, `preco_total_efetivo`, `preco_base_procedimento`, `closed_at`, `fundament_ajuste_direto`, `adjudicatario_pmes`. |
 | `procedure_family` (column) | `sql/005_procurement_dashboard_views.sql` | `ajuste_direto`, `concurso_publico`, `consulta_previa` or `other`, from `tipo_procedimento`. |
 | `duration_bucket` (column) | `sql/005_procurement_dashboard_views.sql` | `1-30`, `31-90`, `91-180`, `181-365`, `366-3650` days of `prazo_execucao`; NULL outside 1..3650. |
 | `v_contracts_material` | `sql/005_procurement_dashboard_views.sql` | `v_contracts_enriched` where `NOT is_below_min_value`. Every dashboard panel reads it. |
-| `v_contract_adjudicatario` | `sql/005_procurement_dashboard_views.sql` | The awardee selector for the dashboards. |
-| `v_adjudicatario_contracts` | `sql/008_entity_dashboard_views.sql` | One row per (contract, awardee) over `v_contracts_material`. Multi-awardee contracts repeat with full `preco_contratual`; use `count(DISTINCT idcontrato)`. |
+| `v_adjudicatario_name` | `sql/005_procurement_dashboard_views.sql` | One canonical name per awardee NIPC: `entities_adjudicatarios`, else `min()` of the bridge names. |
+| `v_contract_adjudicatario` | `sql/005_procurement_dashboard_views.sql` | The awardee selector for the dashboards. The name comes from `v_adjudicatario_name`. |
+| `v_adjudicatario_contracts` | `sql/008_entity_dashboard_views.sql` | One row per (contract, awardee) over `v_contracts_material`. The name comes from `v_adjudicatario_name`. Multi-awardee contracts repeat with full `preco_contratual`; use `count(DISTINCT idcontrato)`. |
 
 ### Why two enriched views
 
