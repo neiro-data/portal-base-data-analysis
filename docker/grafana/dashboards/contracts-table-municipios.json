@@ -9,6 +9,60 @@
     "from": "now-90d",
     "to": "now"
   },
+  "timepicker": {
+    "quick_ranges": [
+      {
+        "display": "Today",
+        "from": "now/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Yesterday",
+        "from": "now-1d/d",
+        "to": "now-1d/d"
+      },
+      {
+        "display": "Last 7 days",
+        "from": "now-7d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 30 days",
+        "from": "now-30d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 90 days",
+        "from": "now-90d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 6 months",
+        "from": "now-6M/d",
+        "to": "now/d"
+      },
+      {
+        "display": "This year so far",
+        "from": "now/y",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 1 year",
+        "from": "now-1y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 2 years",
+        "from": "now-2y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 5 years",
+        "from": "now-5y/d",
+        "to": "now/d"
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -124,7 +178,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
         }
       ]
     },
@@ -221,6 +275,10 @@
               {
                 "id": "custom.hidden",
                 "value": true
+              },
+              {
+                "id": "unit",
+                "value": "string"
               }
             ]
           },
@@ -253,7 +311,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.adjudicante_id AS \"adjudicante_id\", v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE $__timeFilter(v.celebrated_at) AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
+          "rawSql": "SELECT v.adjudicante_id AS \"adjudicante_id\", v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
         }
       ]
     }

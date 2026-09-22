@@ -13,6 +13,60 @@
     "from": "now-2y",
     "to": "now"
   },
+  "timepicker": {
+    "quick_ranges": [
+      {
+        "display": "Today",
+        "from": "now/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Yesterday",
+        "from": "now-1d/d",
+        "to": "now-1d/d"
+      },
+      {
+        "display": "Last 7 days",
+        "from": "now-7d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 30 days",
+        "from": "now-30d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 90 days",
+        "from": "now-90d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 6 months",
+        "from": "now-6M/d",
+        "to": "now/d"
+      },
+      {
+        "display": "This year so far",
+        "from": "now/y",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 1 year",
+        "from": "now-1y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 2 years",
+        "from": "now-2y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 5 years",
+        "from": "now-5y/d",
+        "to": "now/d"
+      }
+    ]
+  },
   "annotations": {
     "list": [
       {
@@ -145,7 +199,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "gridPos": {
@@ -177,7 +231,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "One row per contract, so there is no double counting here.",
@@ -210,7 +264,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.preco_contratual) AS median FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.preco_contratual) AS median FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Reference medians in the notebooks: EUR 8.8k (Ajuste Direto), 23.3k (Consulta Prévia), 52.0k (Concurso Público).",
@@ -243,7 +297,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(DISTINCT a.adjudicatario_id) AS suppliers FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(DISTINCT a.adjudicatario_id) AS suppliers FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND (a.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND a.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(a.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
@@ -276,7 +330,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT CASE WHEN bool_or(v.is_municipio) THEN 'Município' ELSE 'Other entity' END AS type FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT CASE WHEN bool_or(v.is_municipio) THEN 'Município' ELSE 'Other entity' END AS type FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "gridPos": {
@@ -308,7 +362,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.prazo_execucao) AS days FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.prazo_execucao) AS days FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Notebook medians: Ajuste Direto 56, Consulta Prévia 180, Concurso Público 300 days.",
@@ -341,7 +395,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Defined only for contracts lasting 1-3650 days.",
@@ -374,7 +428,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto')::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto')::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Portugal-wide, Ajuste Direto is 57.6 % of contracts. Municipal benchmark: about 50 % of contracts (municipio_vs_ajuste_direto.ipynb).",
@@ -407,7 +461,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT sum(v.preco_contratual) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(sum(v.preco_contratual), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT sum(v.preco_contratual) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(sum(v.preco_contratual), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Portugal-wide, 19.3 % of value. Municipal benchmark: about 12.5 % of value (municipio_vs_ajuste_direto.ipynb).",
@@ -447,7 +501,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
         }
       ],
       "description": "Edge months are partial: the data covers 2025-2026 only and the current year is year-to-date.",
@@ -476,7 +530,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT date_trunc('month', v.celebrated_at) AS time, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
         }
       ],
       "description": "Edge months are partial.",
@@ -568,7 +622,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT a.adjudicatario_name AS supplier, sum(a.preco_contratual) AS total_value, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY total_value DESC LIMIT 15"
+          "rawSql": "SELECT a.adjudicatario_name AS supplier, sum(a.preco_contratual) AS total_value, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND (a.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND a.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY total_value DESC LIMIT 15"
         }
       ],
       "description": "Click a bar to open the supplier dashboard. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
@@ -652,7 +706,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT a.adjudicatario_name AS supplier, count(DISTINCT a.idcontrato) AS contracts, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY contracts DESC LIMIT 15"
+          "rawSql": "SELECT a.adjudicatario_name AS supplier, count(DISTINCT a.idcontrato) AS contracts, a.adjudicatario_id AS adjudicatario_id FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND (a.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND a.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id, a.adjudicatario_name ORDER BY contracts DESC LIMIT 15"
         }
       ],
       "description": "Click a bar to open the supplier dashboard. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
@@ -690,7 +744,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh) FILTER (WHERE rn <= 10) AS top10_share FROM t"
+          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND (a.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND a.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh) FILTER (WHERE rn <= 10) AS top10_share FROM t"
         }
       ],
       "description": "Share of this buyer's spend that goes to its 10 largest suppliers. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
@@ -723,7 +777,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND $__timeFilter(a.celebrated_at) AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh * sh) AS hhi FROM t"
+          "rawSql": "WITH s AS (SELECT sum(a.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts a WHERE a.adjudicante_id = '${adjudicante}' AND (a.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND a.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(a.preco_contratual) >= ${min_contract_value} GROUP BY a.adjudicatario_id), t AS (SELECT val / nullif(sum(val) OVER (), 0) AS sh, row_number() OVER (ORDER BY val DESC) AS rn FROM s) SELECT sum(sh * sh) AS hhi FROM t"
         }
       ],
       "description": "Herfindahl-Hirschman index, sum of squared value shares (0-1). Above 0.25 is highly concentrated. Same measure as the concentration tables in procedures_comparison.ipynb. Reads the per-awardee view: a contract with several awardees is counted in full for each awardee.",
@@ -765,7 +819,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.procedure_family AS family, count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT v.procedure_family AS family, count(*) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
         }
       ],
       "options": {
@@ -798,7 +852,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.procedure_family AS family, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT v.procedure_family AS family, sum(v.preco_contratual) AS value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
         }
       ],
       "options": {
@@ -835,7 +889,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL) AS reported FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL) AS reported FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Contracts where the number of bidders is reported. It is null for more than half of all contracts.",
@@ -868,7 +922,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes = 1)::numeric / nullif(count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(*) FILTER (WHERE v.n_concorrentes = 1)::numeric / nullif(count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Denominator: only contracts that report the number of bidders.",
@@ -897,7 +951,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(v.cpv, '(none)') AS cpv, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY total_value DESC LIMIT 15"
+          "rawSql": "SELECT coalesce(v.cpv, '(none)') AS cpv, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY total_value DESC LIMIT 15"
         }
       ],
       "options": {
@@ -941,7 +995,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(v.fundament_ajuste_direto, '(not reported)') AS \"Fundamento\", count(*) AS \"Contracts\", sum(v.preco_contratual) AS \"Value\" FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.procedure_family = 'ajuste_direto' GROUP BY 1 ORDER BY 2 DESC"
+          "rawSql": "SELECT coalesce(v.fundament_ajuste_direto, '(not reported)') AS \"Fundamento\", count(*) AS \"Contracts\", sum(v.preco_contratual) AS \"Value\" FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} AND v.procedure_family = 'ajuste_direto' GROUP BY 1 ORDER BY 2 DESC"
         }
       ],
       "options": {
@@ -989,7 +1043,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.duration_bucket AS bucket, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
+          "rawSql": "SELECT v.duration_bucket AS bucket, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
         }
       ],
       "description": "Duration in days from prazo_execucao. Contracts without a valid duration are excluded.",
@@ -1023,7 +1077,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.duration_bucket AS bucket, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
+          "rawSql": "SELECT v.duration_bucket AS bucket, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS eur_per_day FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} AND v.duration_bucket IS NOT NULL GROUP BY 1 ORDER BY min(v.prazo_execucao)"
         }
       ],
       "description": "Expect a decline: the notebooks report about EUR 336/day for 1-30 day contracts against EUR 19/day for 366-3650 days. valor_por_dia is defined only for 1-3650 day contracts.",
@@ -1057,7 +1111,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT CASE WHEN abs(v.preco_contratual) < 1000 THEN '1) < 1k' WHEN abs(v.preco_contratual) < 5000 THEN '2) 1k-5k' WHEN abs(v.preco_contratual) < 20000 THEN '3) 5k-20k' WHEN abs(v.preco_contratual) < 75000 THEN '4) 20k-75k' WHEN abs(v.preco_contratual) < 250000 THEN '5) 75k-250k' ELSE '6) >= 250k' END AS band, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
+          "rawSql": "SELECT CASE WHEN abs(v.preco_contratual) < 1000 THEN '1) < 1k' WHEN abs(v.preco_contratual) < 5000 THEN '2) 1k-5k' WHEN abs(v.preco_contratual) < 20000 THEN '3) 5k-20k' WHEN abs(v.preco_contratual) < 75000 THEN '4) 20k-75k' WHEN abs(v.preco_contratual) < 250000 THEN '5) 75k-250k' ELSE '6) >= 250k' END AS band, count(DISTINCT v.idcontrato) AS contracts FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} GROUP BY 1 ORDER BY 1"
         }
       ],
       "description": "Bands at the informal EUR 5 000 / 20 000 / 75 000 reference thresholds (the ones used in the notebooks), plus 1k and 250k. Very large values may be data-entry errors.",
@@ -1095,7 +1149,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) FILTER (WHERE v.closed_at IS NOT NULL)::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT count(*) FILTER (WHERE v.closed_at IS NOT NULL)::numeric / nullif(count(*), 0) AS share FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Share of contracts with a closing date. A lower bound as of the export date: later closures are not in the data.",
@@ -1128,7 +1182,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT sum(v.preco_total_efetivo - v.preco_contratual) FILTER (WHERE v.closed_at IS NOT NULL) AS delta FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value}"
+          "rawSql": "SELECT sum(v.preco_total_efetivo - v.preco_contratual) FILTER (WHERE v.closed_at IS NOT NULL) AS delta FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value}"
         }
       ],
       "description": "Sum of (effective total price - contracted price) on closed contracts. A lower bound as of the export date (procurement_analysis.ipynb sections 5 and 7).",
@@ -1174,7 +1228,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} LIMIT 5000) t"
         }
       ],
       "description": "The table below is capped at LIMIT 5000 rows, newest first; this count makes a silent truncation visible.",
@@ -1268,7 +1322,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.celebrated_at AS \"Date\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.preco_contratual AS \"Preço\", v.preco_total_efetivo AS \"Preço efetivo\", v.prazo_execucao AS \"Prazo (d)\", v.valor_por_dia AS \"EUR/dia\", v.tipo_procedimento AS \"Procedimento\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE v.adjudicante_id = '${adjudicante}' AND $__timeFilter(v.celebrated_at) AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
+          "rawSql": "SELECT v.celebrated_at AS \"Date\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.preco_contratual AS \"Preço\", v.preco_total_efetivo AS \"Preço efetivo\", v.prazo_execucao AS \"Prazo (d)\", v.valor_por_dia AS \"EUR/dia\", v.tipo_procedimento AS \"Procedimento\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE v.adjudicante_id = '${adjudicante}' AND (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND abs(v.preco_contratual) >= ${min_contract_value} ORDER BY v.celebrated_at DESC LIMIT 5000"
         }
       ],
       "options": {
