@@ -1,6 +1,10 @@
 -- Rebuild procurement.contract_adjudicatarios from the packed "adjudicatarios"
 -- column staged by 20_stage_contracts.sql. Must run after 20_stage_contracts.sql
 -- in the same session, while procurement.stg_contracts still holds this batch.
+--
+-- The packed cell holds one "NIPC - Name" entry per line (";" is not a
+-- separator: it appears inside names and in HTML entities such as "&amp;").
+-- The " - " between NIPC and name is consumed so names never start with "- ".
 
 DELETE FROM procurement.contract_adjudicatarios
 WHERE idcontrato IN (SELECT idcontrato FROM procurement.stg_contracts);
@@ -11,7 +15,7 @@ WITH segments AS (
         trim(seg.value) AS raw_segment,
         seg.ordinality AS position
     FROM procurement.stg_contracts s,
-         LATERAL regexp_split_to_table(s."adjudicatarios", '\s*;\s*') WITH ORDINALITY AS seg(value, ordinality)
+         LATERAL regexp_split_to_table(s."adjudicatarios", '\s*[\r\n]+\s*') WITH ORDINALITY AS seg(value, ordinality)
     WHERE s."adjudicatarios" IS NOT NULL AND s."adjudicatarios" <> ''
 ),
 parsed AS (
@@ -19,7 +23,7 @@ parsed AS (
         idcontrato,
         raw_segment,
         position,
-        (regexp_match(raw_segment, '^(\d{9})\s*(.*)$')) AS m
+        (regexp_match(raw_segment, '^(\d{9})[\s-]*(.*)$')) AS m
     FROM segments
 ),
 valid AS (
@@ -52,7 +56,7 @@ BEGIN
     FROM (
         SELECT trim(seg.value) AS raw_segment
         FROM procurement.stg_contracts s,
-             LATERAL regexp_split_to_table(s."adjudicatarios", '\s*;\s*')
+             LATERAL regexp_split_to_table(s."adjudicatarios", '\s*[\r\n]+\s*')
                  WITH ORDINALITY AS seg(value, ordinality)
         WHERE s."adjudicatarios" IS NOT NULL AND s."adjudicatarios" <> ''
     ) segments;
