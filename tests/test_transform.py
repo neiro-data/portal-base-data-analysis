@@ -48,6 +48,29 @@ def test_null_concorrentes_stays_null() -> None:
     assert treat(make_rows(2025, 2, concorrentes=None))["n_concorrentes"].null_count() == 2
 
 
+def test_html_entities_are_unescaped() -> None:
+    raw = make_rows(
+        2025,
+        1,
+        adjudicante="506609553 - TIMESTAMP Business Intelligence &amp; Co",
+        adjudicatarios="517304660 - A &lt;B&gt; C&#x13;",
+        objectoContrato="Fornecimento &amp; instalação",
+        descContrato="Descrição &quot;especial&quot;",
+    )
+    out = treat(raw)
+    assert out["adjudicante_name"][0] == "TIMESTAMP Business Intelligence & Co"
+    assert out["adjudicatarios"][0] == "517304660 - A <B> C"
+    assert out["objecto_contrato"][0] == "Fornecimento & instalação"
+    assert out["desc_contrato"][0] == 'Descrição "especial"'
+
+
+def test_double_escaped_html_entities_are_fully_unescaped() -> None:
+    # A few thousand source rows are double-escaped (`&amp;amp;`), which a single unescape pass
+    # only resolves to `&amp;`.
+    out = treat(make_rows(2025, 1, adjudicante="506609553 - Nunes &amp;amp; Cabral, Lda."))
+    assert out["adjudicante_name"][0] == "Nunes & Cabral, Lda."
+
+
 def test_row_hash_stable_and_sensitive() -> None:
     df = treat(make_rows(2025, 4))
     assert df["row_hash"].to_list() == treat(make_rows(2025, 4))["row_hash"].to_list()

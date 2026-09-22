@@ -8,6 +8,8 @@ it merges against the previous treated file. It never drops a row: the minimum-v
 
 from __future__ import annotations
 
+import html
+
 import polars as pl
 
 from base_gov.contracts import is_municipio_expr
@@ -17,6 +19,26 @@ from base_gov.stats import MIN_VALUE, below_min_value_expr, value_per_day
 # `.hash()` is stable for a given polars version; an upgrade re-hashes every row once, which the
 # ingest summary reports as `updated`.
 HASH_EXCLUDE = frozenset({"row_hash", "first_ingested_at", "updated_at", "is_below_min_value"})
+
+# Free-text columns (adjudicante/adjudicatarios names, objecto/desc) that carry HTML-escaped text
+# (named entities like `&amp;` and numeric ones like `&#8722;`) in the raw export. Unescaping
+# happens once here, before adjudicante/adjudicatarios get split into individual entities, so
+# every downstream name (parquet, entities_*, bridge) is clean.
+_HTML_ENTITY_COLUMNS = ("adjudicante", "adjudicatarios", "objectoContrato", "descContrato")
+
+
+def _unescape_html(s: str | None) -> str | None:
+    if s is None:
+        return None
+    # Applied twice: a few thousand rows are double-escaped (`&amp;amp;`), and one pass over
+    # `&amp;amp;` only resolves to `&amp;`.
+    twice = html.unescape(html.unescape(s))
+    return twice.replace("\x13", "")  # `&#x13;` decodes to a stray control char, not real text
+
+
+def unescape_html_entities(expr: pl.Expr) -> pl.Expr:
+    """Decode HTML entities observed in the raw export's free-text columns."""
+    return expr.map_elements(_unescape_html, return_dtype=pl.String)
 
 TREATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "idcontrato": pl.Int64,
@@ -104,6 +126,7 @@ def treat[F: (pl.DataFrame, pl.LazyFrame)](raw: F, *, min_value: float = MIN_VAL
     if missing:
         raise ValueError(f"raw contracts lack columns {missing}; observed: {have}")
 
+    lf = lf.with_columns(unescape_html_entities(pl.col(c)) for c in _HTML_ENTITY_COLUMNS)
     typed = lf.select(
         *(pl.col(src).cast(TREATED_SCHEMA[dst]).alias(dst) for dst, src in _RENAMES.items())
     )
