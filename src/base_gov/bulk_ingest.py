@@ -23,7 +23,7 @@ import polars as pl
 
 from base_gov import entities_db, raw_ingest
 from base_gov.stats import MIN_VALUE
-from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, treat
+from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, treat, unescape_html_entities
 from base_gov.xlsx_ingest import ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID
 
 logger = logging.getLogger("base_gov")
@@ -281,7 +281,14 @@ def ingest(
         for y in all_years
     ]
 
-    parties = deduped.select(ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID).collect()
+    parties = (
+        deduped.select(ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID)
+        .with_columns(
+            unescape_html_entities(pl.col(ADJUDICANTE)),
+            unescape_html_entities(pl.col(ADJUDICATARIOS)),
+        )
+        .collect()
+    )
     adjudicantes_total = entities_db.write_entities(
         entities_db.adjudicantes(parties), adjudicantes_out
     )
