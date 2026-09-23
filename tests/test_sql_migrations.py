@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pytest
@@ -227,6 +228,37 @@ def test_adjudicatario_view_is_defined_over_material() -> None:
     assert "v_contracts_enriched" not in code
 
 
+def test_contract_adjudicatario_does_not_join_name_union() -> None:
+    code = _sql_code(SQL_DIR / "005_procurement_dashboard_views.sql")
+    match = re.search(
+        r"CREATE OR REPLACE VIEW procurement\.v_contract_adjudicatario\s+AS(.*?);", code, re.S
+    )
+    assert match
+    assert "v_adjudicatario_name" not in match.group(1)
+
+
+def test_009_jit_off_is_guarded() -> None:
+    code = _sql_code(SQL_DIR / "009_dashboard_filter_support.sql")
+    assert re.search(
+        r"IF EXISTS\s*\(SELECT 1 FROM pg_roles.*?ALTER ROLE grafana_reader SET jit = off",
+        code,
+        re.S | re.I,
+    )
+
+
+def test_below_min_view_over_enriched() -> None:
+    code_009 = _sql_code(SQL_DIR / "009_dashboard_filter_support.sql")
+    assert re.search(
+        r"v_contracts_below_min\s+AS\s+SELECT \* FROM procurement\.v_contracts_enriched"
+        r"\s+WHERE is_below_min_value",
+        code_009,
+    )
+    code_005 = _sql_code(SQL_DIR / "005_procurement_dashboard_views.sql")
+    assert code_005.index("DROP VIEW IF EXISTS procurement.v_contracts_below_min") < code_005.index(
+        "DROP VIEW IF EXISTS procurement.v_contracts_enriched"
+    )
+
+
 DASHBOARD_FILES = sorted(DASHBOARD_DIR.glob("*.json"))
 
 
@@ -287,7 +319,7 @@ def test_overview_has_freshness_and_excluded_panels() -> None:
     assert {"Data freshness (last update)", "Excluded below EUR 10"} <= titles
 
 
-def _load_dashboards() -> dict[str, dict]:
+def _load_dashboards() -> dict[str, dict[str, Any]]:
     import json
 
     return {p.name: json.loads(p.read_text()) for p in DASHBOARD_FILES}
