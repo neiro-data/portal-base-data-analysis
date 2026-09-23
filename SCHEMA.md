@@ -102,7 +102,8 @@ inside the packed source string. The foreign key to `contracts` cascades on dele
 | `duration_bucket` (column) | `sql/005_procurement_dashboard_views.sql` | `1-30`, `31-90`, `91-180`, `181-365`, `366-3650` days of `prazo_execucao`; NULL outside 1..3650. |
 | `v_contracts_material` | `sql/005_procurement_dashboard_views.sql` | `v_contracts_enriched` where `NOT is_below_min_value`. Every dashboard panel reads it. |
 | `v_adjudicatario_name` | `sql/005_procurement_dashboard_views.sql` | One canonical name per awardee NIPC: `entities_adjudicatarios`, else `min()` of the bridge names. |
-| `v_contract_adjudicatario` | `sql/005_procurement_dashboard_views.sql` | The awardee selector for the dashboards. The name comes from `v_adjudicatario_name`. |
+| `v_contract_adjudicatario` | `sql/005_procurement_dashboard_views.sql` | The awardee selector for the dashboards. The name resolves inline (entity name, else `min()` bridge name); it skips `v_adjudicatario_name` because the UNION fallback forced a bridge seq scan per output row (panel 2: >171 s vs 147 ms). |
+| `v_contracts_below_min` | `sql/009_dashboard_filter_support.sql` | `v_contracts_enriched` where `is_below_min_value`: the complement of `v_contracts_material`, with `procedure_family`. Feeds overview panel 10. |
 | `v_adjudicatario_contracts` | `sql/008_entity_dashboard_views.sql` | One row per (contract, awardee) over `v_contracts_material`. The name comes from `v_adjudicatario_name`. Multi-awardee contracts repeat with full `preco_contratual`; use `count(DISTINCT idcontrato)`. |
 
 ### Why two enriched views
@@ -132,11 +133,13 @@ columns are plain calendar dates, so no timezone meaning is lost.
 | `005_procurement_dashboard_views.sql` | The three dashboard views. |
 | `006_timestamp_cast_indexes.sql` | The expression indexes for the timestamp casts. |
 | `007_ingestion_metadata.sql` | Guarded rename `ingested_at` -> `first_ingested_at`, drops both timestamp defaults, adds the treated columns and three indexes. `002` applies the same statements so `005` resolves on a warm volume. |
+| `008_entity_dashboard_views.sql` | `v_adjudicatario_contracts`. |
+| `009_dashboard_filter_support.sql` | `jit = off` for `grafana_reader` (guarded) and `v_contracts_below_min`. |
 
 `sql/ingest/` holds the load steps that `bin/ingest-postgres.sh` runs: `10_stage_entities.sql`,
 `20_stage_contracts.sql`, `30_rebuild_bridge.sql`.
 
-The numbers have no gaps and no duplicates: 001 to 007, and 10/20/30.
+The numbers have no gaps and no duplicates: 001 to 009, and 10/20/30.
 
 `004_grafana_role.sql` grants `SELECT` on every table and view that the owner role creates in
 the schema afterwards. The views of 005 need no separate grant.

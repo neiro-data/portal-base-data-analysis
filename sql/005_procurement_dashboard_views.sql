@@ -26,6 +26,8 @@
 -- 008's v_adjudicatario_contracts selects from v_contracts_material; drop it first
 -- (008 recreates it later in the same init-db run).
 DROP VIEW IF EXISTS procurement.v_adjudicatario_contracts;
+-- 009's v_contracts_below_min selects from v_contracts_enriched; 009 recreates it.
+DROP VIEW IF EXISTS procurement.v_contracts_below_min;
 DROP VIEW IF EXISTS procurement.v_contracts_material;
 DROP VIEW IF EXISTS procurement.v_contracts_enriched;
 
@@ -125,13 +127,24 @@ COMMENT ON VIEW procurement.v_adjudicatario_name IS
     'min(contract_adjudicatarios.name). Join target for every adjudicatario_name.';
 
 -- Bridge surface, one row per (contract, awardee), with the canonical name.
+-- The name is resolved inline (entity name, else min bridge name per NIPC, else the row
+-- name) and does NOT join v_adjudicatario_name: its UNION ALL ... GROUP BY fallback branch
+-- cannot take a pushed-down parameter, so a LATERAL/EXISTS use re-ran a full seq scan of the
+-- bridge per output row (panel 2, 90 d, LIMIT 5000: >171 s, about 355 s extrapolated).
+-- The correlated subquery below runs only for rows without an entity row (~306) and uses
+-- idx_contract_adjudicatarios_entity_id (same query: 147 ms).
 CREATE OR REPLACE VIEW procurement.v_contract_adjudicatario AS
 SELECT
     b.idcontrato,
-    b.entity_id               AS adjudicatario_id,
-    coalesce(n.name, b.name)  AS adjudicatario_name
+    b.entity_id AS adjudicatario_id,
+    coalesce(
+        e.name,
+        (SELECT min(b2.name) FROM procurement.contract_adjudicatarios b2
+          WHERE b2.entity_id = b.entity_id),
+        b.name
+    ) AS adjudicatario_name
 FROM procurement.contract_adjudicatarios b
-LEFT JOIN procurement.v_adjudicatario_name n ON n.entity_id = b.entity_id;
+LEFT JOIN procurement.entities_adjudicatarios e ON e.entity_id = b.entity_id;
 
 COMMENT ON VIEW procurement.v_contract_adjudicatario IS
     'One row per (contract, awardee), for the adjudicatario selector and the '
