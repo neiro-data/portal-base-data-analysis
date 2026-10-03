@@ -60,6 +60,11 @@
         "display": "Last 5 years",
         "from": "now-5y/d",
         "to": "now/d"
+      },
+      {
+        "display": "Last 10 years",
+        "from": "now-10y/d",
+        "to": "now/d"
       }
     ]
   },
@@ -109,12 +114,45 @@
         "skipUrlSync": false
       },
       {
+        "name": "show_all_contract_types",
+        "label": "Show all contract types",
+        "type": "custom",
+        "description": "Off: contract type is grouped into procedure families (Ajuste direto, Concurso público, Consulta prévia, Other). On: contract type lists every individual tipo_procedimento (20 values). Switching resets the Contract type selection to All when the previous values do not exist in the new list.",
+        "query": "Off : off,On : on",
+        "current": {
+          "selected": true,
+          "text": "Off",
+          "value": "off"
+        },
+        "options": [
+          {
+            "text": "Off",
+            "value": "off",
+            "selected": true
+          },
+          {
+            "text": "On",
+            "value": "on",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      },
+      {
         "name": "contract_type",
         "label": "Contract type",
-        "type": "custom",
-        "query": "Ajuste direto : ajuste_direto,Concurso público : concurso_publico,Consulta prévia : consulta_previa,Other : other",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
+        "query": "SELECT text AS __text, value AS __value FROM procurement.v_contract_type_options WHERE mode = '${show_all_contract_types}' ORDER BY sort, text",
+        "refresh": 1,
+        "sort": 0,
         "includeAll": true,
-        "allValue": "__ALL__",
+        "allValue": "'__ALL__'",
         "multi": true,
         "current": {
           "selected": true,
@@ -125,7 +163,7 @@
             "$__all"
           ]
         },
-        "description": "Procedure family (procedure_family, from contracts.tipo_procedimento). Other = every procedure outside the three named families.",
+        "description": "Procedure family (procedure_family, from contracts.tipo_procedimento); Other = every procedure outside the three named families. Turn on 'Show all contract types' to filter by the exact tipo_procedimento instead.",
         "hide": 0,
         "options": []
       },
@@ -211,7 +249,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND (${contract_id:sqlstring} = '' OR v.idcontrato = nullif(regexp_replace(${contract_id:sqlstring}, '[^0-9]', '', 'g'), '')::bigint) LIMIT 5000) t"
+          "rawSql": "SELECT count(*) AS rows_shown FROM (SELECT v.idcontrato FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND (${contract_id:sqlstring} = '' OR v.idcontrato = nullif(regexp_replace(${contract_id:sqlstring}, '[^0-9]', '', 'g'), '')::bigint) LIMIT 5000) t"
         }
       ]
     },
@@ -326,12 +364,12 @@
                 "value": [
                   {
                     "title": "Analysis by adjudicante",
-                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   },
                   {
                     "title": "Contracts (filtered)",
-                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   }
                 ]
@@ -344,7 +382,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.adjudicante_id AS \"adjudicante_id\", v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND (${contract_id:sqlstring} = '' OR v.idcontrato = nullif(regexp_replace(${contract_id:sqlstring}, '[^0-9]', '', 'g'), '')::bigint) ORDER BY v.celebrated_at DESC LIMIT 5000"
+          "rawSql": "SELECT v.adjudicante_id AS \"adjudicante_id\", v.celebrated_at AS \"Date\", v.adjudicante_name AS \"Adjudicante\", a.adjudicatario_names AS \"Adjudicatário(s)\", v.objecto_contrato AS \"Objecto\", v.desc_contrato AS \"Descrição\", v.preco_contratual AS \"Preço\", v.tipo_contrato AS \"Tipo\", v.cpv AS \"CPV\", v.idcontrato AS \"ID\" FROM procurement.v_contracts_material v LEFT JOIN LATERAL (SELECT string_agg(a2.adjudicatario_name, ', ' ORDER BY a2.adjudicatario_name) AS adjudicatario_names FROM procurement.v_contract_adjudicatario a2 WHERE a2.idcontrato = v.idcontrato) a ON true WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a3 WHERE a3.idcontrato = v.idcontrato AND a3.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND (${contract_id:sqlstring} = '' OR v.idcontrato = nullif(regexp_replace(${contract_id:sqlstring}, '[^0-9]', '', 'g'), '')::bigint) ORDER BY v.celebrated_at DESC LIMIT 5000"
         }
       ]
     }

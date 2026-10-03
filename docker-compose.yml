@@ -9,6 +9,8 @@ services:
         PGRX_VERSION: ${PGRX_VERSION:-0.16.0}
     image: portal-base/postgres-pg-parquet:17-0.5.1
     container_name: pbd-postgres
+    # Docker's 64MB default /dev/shm overflows on parallel queries over 10y of data
+    shm_size: 1gb
     command: postgres -c shared_preload_libraries=pg_parquet -c max_wal_size=2GB -c shared_buffers=512MB -c effective_cache_size=1536MB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-base_gov}

@@ -60,6 +60,11 @@
         "display": "Last 5 years",
         "from": "now-5y/d",
         "to": "now/d"
+      },
+      {
+        "display": "Last 10 years",
+        "from": "now-10y/d",
+        "to": "now/d"
       }
     ]
   },
@@ -128,12 +133,45 @@
         "skipUrlSync": false
       },
       {
+        "name": "show_all_contract_types",
+        "label": "Show all contract types",
+        "type": "custom",
+        "description": "Off: contract type is grouped into procedure families (Ajuste direto, Concurso público, Consulta prévia, Other). On: contract type lists every individual tipo_procedimento (20 values). Switching resets the Contract type selection to All when the previous values do not exist in the new list.",
+        "query": "Off : off,On : on",
+        "current": {
+          "selected": true,
+          "text": "Off",
+          "value": "off"
+        },
+        "options": [
+          {
+            "text": "Off",
+            "value": "off",
+            "selected": true
+          },
+          {
+            "text": "On",
+            "value": "on",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "skipUrlSync": false
+      },
+      {
         "name": "contract_type",
         "label": "Contract type",
-        "type": "custom",
-        "query": "Ajuste direto : ajuste_direto,Concurso público : concurso_publico,Consulta prévia : consulta_previa,Other : other",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "procurement-analytics-pg"
+        },
+        "query": "SELECT text AS __text, value AS __value FROM procurement.v_contract_type_options WHERE mode = '${show_all_contract_types}' ORDER BY sort, text",
+        "refresh": 1,
+        "sort": 0,
         "includeAll": true,
-        "allValue": "__ALL__",
+        "allValue": "'__ALL__'",
         "multi": true,
         "current": {
           "selected": true,
@@ -144,7 +182,7 @@
             "$__all"
           ]
         },
-        "description": "Procedure family (procedure_family, from contracts.tipo_procedimento). Other = every procedure outside the three named families.",
+        "description": "Procedure family (procedure_family, from contracts.tipo_procedimento); Other = every procedure outside the three named families. Turn on 'Show all contract types' to filter by the exact tipo_procedimento instead.",
         "hide": 0,
         "options": []
       },
@@ -217,7 +255,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS total_contracts FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ',')))"
+          "rawSql": "SELECT count(*) AS total_contracts FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}]))"
         }
       ]
     },
@@ -249,7 +287,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(v.preco_contratual),0) AS total_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(v.preco_contratual),0) AS total_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}]))"
         }
       ]
     },
@@ -281,7 +319,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(avg(v.preco_contratual),2) AS avg_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ',')))"
+          "rawSql": "SELECT round(avg(v.preco_contratual),2) AS avg_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}]))"
         }
       ]
     },
@@ -313,7 +351,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(DISTINCT v.adjudicante_id) AS distinct_adjudicantes FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ',')))"
+          "rawSql": "SELECT count(DISTINCT v.adjudicante_id) AS distinct_adjudicantes FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}]))"
         }
       ]
     },
@@ -349,7 +387,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "WITH u AS (SELECT lo, hi, CASE WHEN hi - lo <= interval '62 days' THEN 'day' WHEN hi - lo <= interval '183 days' THEN 'week' ELSE 'month' END AS unit FROM (SELECT date_trunc('day', $__timeFrom()::timestamp) AS lo, date_trunc('day', $__timeTo()::timestamp) + interval '1 day' AS hi) b), s AS (SELECT gs AS bucket FROM u, generate_series(date_trunc(u.unit, u.lo), u.hi - interval '1 microsecond', ('1 ' || u.unit)::interval) gs), agg AS (SELECT date_trunc(u.unit, v.celebrated_at) AS bucket, count(*) AS val FROM procurement.v_contracts_material v, u WHERE v.celebrated_at >= u.lo AND v.celebrated_at < u.hi AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) GROUP BY 1) SELECT s.bucket AS time, coalesce(agg.val, 0) AS contracts FROM s LEFT JOIN agg USING (bucket) ORDER BY 1"
+          "rawSql": "WITH u AS (SELECT lo, hi, CASE WHEN hi - lo <= interval '62 days' THEN 'day' WHEN hi - lo <= interval '183 days' THEN 'week' ELSE 'month' END AS unit FROM (SELECT date_trunc('day', $__timeFrom()::timestamp) AS lo, date_trunc('day', $__timeTo()::timestamp) + interval '1 day' AS hi) b), s AS (SELECT gs AS bucket FROM u, generate_series(date_trunc(u.unit, u.lo), u.hi - interval '1 microsecond', ('1 ' || u.unit)::interval) gs), agg AS (SELECT date_trunc(u.unit, v.celebrated_at) AS bucket, count(*) AS val FROM procurement.v_contracts_material v, u WHERE v.celebrated_at >= u.lo AND v.celebrated_at < u.hi AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) GROUP BY 1) SELECT s.bucket AS time, coalesce(agg.val, 0) AS contracts FROM s LEFT JOIN agg USING (bucket) ORDER BY 1"
         }
       ],
       "description": "Bucket size follows the time range: day up to 2 months, week (Monday start) up to 6 months, month beyond."
@@ -386,7 +424,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "WITH u AS (SELECT lo, hi, CASE WHEN hi - lo <= interval '62 days' THEN 'day' WHEN hi - lo <= interval '183 days' THEN 'week' ELSE 'month' END AS unit FROM (SELECT date_trunc('day', $__timeFrom()::timestamp) AS lo, date_trunc('day', $__timeTo()::timestamp) + interval '1 day' AS hi) b), s AS (SELECT gs AS bucket FROM u, generate_series(date_trunc(u.unit, u.lo), u.hi - interval '1 microsecond', ('1 ' || u.unit)::interval) gs), agg AS (SELECT date_trunc(u.unit, v.celebrated_at) AS bucket, sum(v.preco_contratual) AS val FROM procurement.v_contracts_material v, u WHERE v.celebrated_at >= u.lo AND v.celebrated_at < u.hi AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) GROUP BY 1) SELECT s.bucket AS time, coalesce(agg.val, 0) AS contract_value FROM s LEFT JOIN agg USING (bucket) ORDER BY 1"
+          "rawSql": "WITH u AS (SELECT lo, hi, CASE WHEN hi - lo <= interval '62 days' THEN 'day' WHEN hi - lo <= interval '183 days' THEN 'week' ELSE 'month' END AS unit FROM (SELECT date_trunc('day', $__timeFrom()::timestamp) AS lo, date_trunc('day', $__timeTo()::timestamp) + interval '1 day' AS hi) b), s AS (SELECT gs AS bucket FROM u, generate_series(date_trunc(u.unit, u.lo), u.hi - interval '1 microsecond', ('1 ' || u.unit)::interval) gs), agg AS (SELECT date_trunc(u.unit, v.celebrated_at) AS bucket, sum(v.preco_contratual) AS val FROM procurement.v_contracts_material v, u WHERE v.celebrated_at >= u.lo AND v.celebrated_at < u.hi AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) GROUP BY 1) SELECT s.bucket AS time, coalesce(agg.val, 0) AS contract_value FROM s LEFT JOIN agg USING (bucket) ORDER BY 1"
         }
       ],
       "description": "Bucket size follows the time range: day up to 2 months, week (Monday start) up to 6 months, month beyond."
@@ -407,7 +445,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "currencyEUR"
+          "unit": "currencyEUR",
+          "custom": {}
         },
         "overrides": [
           {
@@ -441,12 +480,12 @@
                 "value": [
                   {
                     "title": "Analysis by adjudicante",
-                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   },
                   {
                     "title": "Contracts (filtered)",
-                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   }
                 ]
@@ -464,15 +503,31 @@
                 "value": [
                   {
                     "title": "Analysis by adjudicante",
-                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-adjudicante/analysis-by-adjudicante?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   },
                   {
                     "title": "Contracts (filtered)",
-                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicante=${__data.fields[\"adjudicante_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total_value"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              },
+              {
+                "id": "custom.axisGridShow",
+                "value": false
               }
             ]
           }
@@ -488,7 +543,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.adjudicante_id, v.adjudicante_name AS adjudicante, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) GROUP BY v.adjudicante_id, v.adjudicante_name ORDER BY total_value DESC LIMIT 10"
+          "rawSql": "SELECT adjudicante_id, CASE WHEN length(adjudicante) > 60 THEN left(adjudicante, 59) || '…' ELSE adjudicante END AS adjudicante, total_value, adjudicante AS full_name FROM (SELECT v.adjudicante_id, v.adjudicante_name AS adjudicante, sum(v.preco_contratual) AS total_value FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario a WHERE a.idcontrato = v.idcontrato AND a.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND v.is_municipio AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) GROUP BY v.adjudicante_id, v.adjudicante_name ORDER BY total_value DESC LIMIT 10) t ORDER BY total_value DESC"
         }
       ],
       "description": "Click a bar for links to the adjudicante analysis and its contracts."
@@ -509,7 +564,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "currencyEUR"
+          "unit": "currencyEUR",
+          "custom": {}
         },
         "overrides": [
           {
@@ -543,12 +599,12 @@
                 "value": [
                   {
                     "title": "Analysis by adjudicatário",
-                    "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   },
                   {
                     "title": "Contracts (filtered)",
-                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   }
                 ]
@@ -566,15 +622,31 @@
                 "value": [
                   {
                     "title": "Analysis by adjudicatário",
-                    "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-adjudicatario/analysis-by-adjudicatario?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   },
                   {
                     "title": "Contracts (filtered)",
-                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${__url_time_range}",
+                    "url": "/d/base-contracts-table-municipios/contracts?var-adjudicatario=${__data.fields[\"adjudicatario_id\"]}&var-min_contract_value=${min_contract_value}&${contract_type:queryparam}&${show_all_contract_types:queryparam}&${__url_time_range}",
                     "targetBlank": false
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total_value"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              },
+              {
+                "id": "custom.axisGridShow",
+                "value": false
               }
             ]
           }
@@ -584,7 +656,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT v.adjudicatario_id, v.adjudicatario_name AS adjudicatario, sum(v.preco_contratual) AS total_value FROM procurement.v_adjudicatario_contracts v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR v.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ','))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY v.adjudicatario_id, v.adjudicatario_name ORDER BY total_value DESC LIMIT 10"
+          "rawSql": "SELECT adjudicatario_id, CASE WHEN length(adjudicatario) > 60 THEN left(adjudicatario, 59) || '…' ELSE adjudicatario END AS adjudicatario, total_value, adjudicatario AS full_name FROM (SELECT v.adjudicatario_id, v.adjudicatario_name AS adjudicatario, sum(v.preco_contratual) AS total_value FROM procurement.v_adjudicatario_contracts v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR v.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ','))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY v.adjudicatario_id, v.adjudicatario_name ORDER BY total_value DESC LIMIT 10) t ORDER BY total_value DESC"
         }
       ],
       "description": "Click a bar for links to the adjudicatário analysis and its contracts.",
@@ -631,7 +703,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT v.procedure_family AS procedure_type, round(100.0 * count(*) / sum(count(*)) OVER (), 1) AS \"share of count (%)\", round(100.0 * sum(v.preco_contratual) / nullif(sum(sum(v.preco_contratual)) OVER (), 0), 1) AS \"share of value (%)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY v.procedure_family ORDER BY 1"
+              "rawSql": "SELECT CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END AS procedure_type, round(100.0 * count(*) / sum(count(*)) OVER (), 1) AS \"share of count (%)\", round(100.0 * sum(v.preco_contratual) / nullif(sum(sum(v.preco_contratual)) OVER (), 0), 1) AS \"share of value (%)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY 1 ORDER BY 1"
             }
           ],
           "description": "Notebook conclusion (procedures_comparison): Ajuste Direto is most contracts by count but a small share of value; Concurso Público is the reverse.",
@@ -699,7 +771,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT v.procedure_family AS procedure_type, count(*) AS contracts, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[1] AS median, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[2] AS p90, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[3] AS p99 FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY v.procedure_family ORDER BY 1"
+              "rawSql": "SELECT CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END AS procedure_type, count(*) AS contracts, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[1] AS median, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[2] AS p90, (percentile_cont(ARRAY[0.5, 0.9, 0.99]) WITHIN GROUP (ORDER BY v.preco_contratual))[3] AS p99 FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY 1 ORDER BY 1"
             }
           ],
           "description": "Median, 90th and 99th percentile of preço contratual per procedure type."
@@ -739,7 +811,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT v.procedure_family AS procedure_type, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.prazo_execucao) AS \"median prazo (days)\", percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS \"median €/day\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY v.procedure_family ORDER BY 1"
+              "rawSql": "SELECT CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END AS procedure_type, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.prazo_execucao) AS \"median prazo (days)\", percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS \"median €/day\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY 1 ORDER BY 1"
             }
           ],
           "description": "Median prazo_execucao and valor_por_dia (defined only for 1–3650-day durations)."
@@ -768,7 +840,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT v.duration_bucket AS bucket, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS \"median €/day\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio AND v.duration_bucket IS NOT NULL GROUP BY v.duration_bucket ORDER BY min(v.prazo_execucao)"
+              "rawSql": "SELECT v.duration_bucket AS bucket, percentile_cont(0.5) WITHIN GROUP (ORDER BY v.valor_por_dia) AS \"median €/day\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio AND v.duration_bucket IS NOT NULL GROUP BY v.duration_bucket ORDER BY min(v.prazo_execucao)"
             }
           ],
           "description": "Short contracts inflate €/day: the shorter the duration, the higher the daily value.",
@@ -801,7 +873,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT band, count(*) AS contracts FROM (SELECT CASE WHEN abs(v.preco_contratual) < 1000 THEN '1) < 1k' WHEN abs(v.preco_contratual) < 5000 THEN '2) 1k–5k' WHEN abs(v.preco_contratual) < 20000 THEN '3) 5k–20k' WHEN abs(v.preco_contratual) < 75000 THEN '4) 20k–75k' WHEN abs(v.preco_contratual) < 250000 THEN '5) 75k–250k' ELSE '6) ≥ 250k' END AS band FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio) t GROUP BY band ORDER BY band"
+              "rawSql": "SELECT band, count(*) AS contracts FROM (SELECT CASE WHEN abs(v.preco_contratual) < 1000 THEN '1) < 1k' WHEN abs(v.preco_contratual) < 5000 THEN '2) 1k–5k' WHEN abs(v.preco_contratual) < 20000 THEN '3) 5k–20k' WHEN abs(v.preco_contratual) < 75000 THEN '4) 20k–75k' WHEN abs(v.preco_contratual) < 250000 THEN '5) 75k–250k' ELSE '6) ≥ 250k' END AS band FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio) t GROUP BY band ORDER BY band"
             }
           ],
           "description": "Band edges at €5 000 / €20 000 / €75 000 are the informal reference points used in the notebooks (ajuste_direto_contracts) — NOT legal CCP thresholds.",
@@ -838,7 +910,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL) / nullif(count(*), 0), 1) AS \"reported (% of contracts)\", round(100.0 * count(*) FILTER (WHERE v.n_concorrentes = 1) / nullif(count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL), 0), 1) AS \"single bidder (% of reported)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio"
+              "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL) / nullif(count(*), 0), 1) AS \"reported (% of contracts)\", round(100.0 * count(*) FILTER (WHERE v.n_concorrentes = 1) / nullif(count(*) FILTER (WHERE v.n_concorrentes IS NOT NULL), 0), 1) AS \"single bidder (% of reported)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio"
             }
           ],
           "description": "The single-bidder share denominator is contracts with a reported number of bidders only."
@@ -895,7 +967,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE v.closed_at IS NOT NULL) / nullif(count(*), 0), 1) AS \"closed (% of contracts)\", coalesce(sum(v.preco_total_efetivo - v.preco_contratual) FILTER (WHERE v.preco_total_efetivo IS NOT NULL), 0) AS \"Σ efetivo − Σ contratual (closed)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio"
+              "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE v.closed_at IS NOT NULL) / nullif(count(*), 0), 1) AS \"closed (% of contracts)\", coalesce(sum(v.preco_total_efetivo - v.preco_contratual) FILTER (WHERE v.preco_total_efetivo IS NOT NULL), 0) AS \"Σ efetivo − Σ contratual (closed)\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio"
             }
           ],
           "description": "data_fecho and preco_total_efetivo only populate when a contract is closed."
@@ -922,7 +994,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH s AS (SELECT v.procedure_family AS procedure_type, v.adjudicante_id, sum(v.preco_contratual) AS val FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY 1, 2), t AS (SELECT procedure_type, val / nullif(sum(val) OVER (PARTITION BY procedure_type), 0) AS share, row_number() OVER (PARTITION BY procedure_type ORDER BY val DESC) AS rn FROM s) SELECT procedure_type, count(*) AS buyers, round(100 * sum(share) FILTER (WHERE rn <= 10), 1) AS \"top-10 share (%)\", round(sum(share * share)::numeric, 4) AS hhi FROM t GROUP BY procedure_type ORDER BY procedure_type"
+              "rawSql": "WITH s AS (SELECT CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END AS procedure_type, v.adjudicante_id, sum(v.preco_contratual) AS val FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY 1, 2), t AS (SELECT procedure_type, val / nullif(sum(val) OVER (PARTITION BY procedure_type), 0) AS share, row_number() OVER (PARTITION BY procedure_type ORDER BY val DESC) AS rn FROM s) SELECT procedure_type, count(*) AS buyers, round(100 * sum(share) FILTER (WHERE rn <= 10), 1) AS \"top-10 share (%)\", round(sum(share * share)::numeric, 4) AS hhi FROM t GROUP BY procedure_type ORDER BY procedure_type"
             }
           ],
           "description": "Share of value held by the 10 largest buyers per procedure type, and the Herfindahl–Hirschman index (0 = fragmented, 1 = one buyer)."
@@ -949,7 +1021,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH s AS (SELECT v.procedure_family AS procedure_type, v.adjudicatario_id, sum(v.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR v.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ','))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY 1, 2), t AS (SELECT procedure_type, val / nullif(sum(val) OVER (PARTITION BY procedure_type), 0) AS share, row_number() OVER (PARTITION BY procedure_type ORDER BY val DESC) AS rn FROM s) SELECT procedure_type, count(*) AS suppliers, round(100 * sum(share) FILTER (WHERE rn <= 10), 1) AS \"top-10 share (%)\", round(sum(share * share)::numeric, 4) AS hhi FROM t GROUP BY procedure_type ORDER BY procedure_type"
+              "rawSql": "WITH s AS (SELECT CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END AS procedure_type, v.adjudicatario_id, sum(v.preco_contratual) AS val FROM procurement.v_adjudicatario_contracts v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR v.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ','))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY 1, 2), t AS (SELECT procedure_type, val / nullif(sum(val) OVER (PARTITION BY procedure_type), 0) AS share, row_number() OVER (PARTITION BY procedure_type ORDER BY val DESC) AS rn FROM s) SELECT procedure_type, count(*) AS suppliers, round(100 * sum(share) FILTER (WHERE rn <= 10), 1) AS \"top-10 share (%)\", round(sum(share * share)::numeric, 4) AS hhi FROM t GROUP BY procedure_type ORDER BY procedure_type"
             }
           ]
         }
@@ -994,7 +1066,7 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(count(*), 0) AS \"by count\", 100.0 * sum(v.preco_contratual) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(sum(v.preco_contratual), 0) AS \"by value\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio"
+              "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(count(*), 0) AS \"by count\", 100.0 * sum(v.preco_contratual) FILTER (WHERE v.procedure_family = 'ajuste_direto') / nullif(sum(v.preco_contratual), 0) AS \"by value\" FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio"
             }
           ],
           "description": "municipio_vs_ajuste_direto: direct award is about half of municipal contracts by count but about an eighth by value."
@@ -1023,13 +1095,14 @@
             {
               "refId": "A",
               "format": "table",
-              "rawSql": "WITH m AS (SELECT v.adjudicante_id, min(v.adjudicante_name) AS municipio, round(100.0 * count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto') / count(*), 1) AS ad_share_pct FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('${contract_type:csv}' = '__ALL__' OR v.procedure_family = ANY(string_to_array('${contract_type:csv}', ','))) AND v.is_municipio GROUP BY v.adjudicante_id HAVING count(*) >= 50), r AS (SELECT *, row_number() OVER (ORDER BY ad_share_pct DESC) AS rk_desc, row_number() OVER (ORDER BY ad_share_pct ASC) AS rk_asc FROM m) SELECT municipio, ad_share_pct FROM r WHERE rk_desc <= 10 OR rk_asc <= 10 ORDER BY ad_share_pct DESC"
+              "rawSql": "SELECT CASE WHEN length(municipio) > 36 THEN left(municipio, 35) || '…' ELSE municipio END AS municipio, ad_share_pct, municipio AS full_name FROM (WITH m AS (SELECT v.adjudicante_id, min(v.adjudicante_name) AS municipio, round(100.0 * count(*) FILTER (WHERE v.procedure_family = 'ajuste_direto') / count(*), 1) AS ad_share_pct FROM procurement.v_contracts_material v WHERE (v.celebrated_at >= date_trunc('day', $__timeFrom()::timestamp) AND v.celebrated_at < date_trunc('day', $__timeTo()::timestamp) + interval '1 day') AND ('${adjudicante:csv}' = '__ALL__' OR v.adjudicante_id = ANY(string_to_array('${adjudicante:csv}', ','))) AND ('${adjudicatario:csv}' = '__ALL__' OR EXISTS (SELECT 1 FROM procurement.v_contract_adjudicatario x WHERE x.idcontrato = v.idcontrato AND x.adjudicatario_id = ANY(string_to_array('${adjudicatario:csv}', ',')))) AND abs(v.preco_contratual) >= ${min_contract_value} AND ('__ALL__' = ANY(ARRAY[${contract_type:sqlstring}]) OR (CASE WHEN '${show_all_contract_types}' = 'on' THEN v.tipo_procedimento ELSE v.procedure_family END) = ANY(ARRAY[${contract_type:sqlstring}])) AND v.is_municipio GROUP BY v.adjudicante_id HAVING count(*) >= 50), r AS (SELECT *, row_number() OVER (ORDER BY ad_share_pct DESC) AS rk_desc, row_number() OVER (ORDER BY ad_share_pct ASC) AS rk_asc FROM m) SELECT municipio, ad_share_pct FROM r WHERE rk_desc <= 10 OR rk_asc <= 10 ORDER BY ad_share_pct DESC) t ORDER BY ad_share_pct DESC"
             }
           ],
           "description": "Top and bottom 10 municipalities by direct-award share, among those with at least 50 contracts in the selected range. Keyed by NIPC, so each entity counts once.",
           "options": {
             "xField": "municipio",
-            "orientation": "horizontal"
+            "orientation": "horizontal",
+            "xTickLabelMaxLength": 28
           }
         }
       ]
