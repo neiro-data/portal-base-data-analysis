@@ -359,12 +359,12 @@ def test_overview_links_to_entity_dashboards(name: str) -> None:
         ("adjudicatario-analysis.json", "adjudicatario"),
     ],
 )
-def test_entity_dashboards_are_single_select(name: str, var: str) -> None:
+def test_entity_dashboards_are_multi_select(name: str, var: str) -> None:
     import json
 
     variables = json.loads((DASHBOARD_DIR / name).read_text())["templating"]["list"]
     entry = next(v for v in variables if v["name"] == var)
-    assert entry["multi"] is False
+    assert entry["multi"] is True
     assert entry["includeAll"] is False
 
 

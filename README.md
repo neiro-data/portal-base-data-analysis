@@ -44,7 +44,7 @@ tasks — see **[scripts-guide.md](scripts-guide.md)**.
 `data/source/`. Each file is checked against the sha1 that the API publishes. The command writes
 the result to `data/manifest.json`, and a run skips a file that did not change.
 
-Flags: `--years N` (default 3), `--year Y` (repeatable), `--from-year Y`, `--dest PATH`,
+Flags: `--years N` (default 3; `--years 10` gives the 10-year range for the "Last 10 years" dashboard picker), `--year Y` (repeatable), `--from-year Y`, `--dest PATH`,
 `--force`, `--dry-run`, `--verify-only`, `--verbose`.
 
 A local file with a different sha1 is replaced after a verified download.
@@ -53,7 +53,7 @@ A local file with a different sha1 is replaced after a verified download.
 
 ## Bulk ingest
 
-Three years are in scope (2024, 2025, 2026; 2026 is year-to-date). `bin/ingest-contracts.sh`
+The scope is whatever years you downloaded: the default is the last three, and `download-contracts --years 10` plus a re-ingest gives the 10-year range (the dashboards' "Last 10 years" picker). The currently loaded data starts in 2022; the current year is year-to-date. `bin/ingest-contracts.sh`
 works in two layers. **Raw:** each `data/source/contratos<YEAR>.xlsx` becomes
 `data/raw/contracts_raw_<YEAR>.parquet`, columns verbatim. **Treated:** `data/contracts.parquet`
 is built from all raw years together. Contracts under EUR 10 are flagged

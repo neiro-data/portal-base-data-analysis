@@ -43,13 +43,29 @@ def test_six_dashboards() -> None:
 
 @pytest.mark.parametrize("name", NAMES)
 def test_contract_type_variable(name: str) -> None:
-    v = _var(_load(name), "contract_type")
-    assert v["type"] == "custom"
+    d = _load(name)
+    v = _var(d, "contract_type")
+    assert v["type"] == "query"
     assert v["includeAll"] is True
-    assert v["allValue"] == "__ALL__"
+    assert v["multi"] is True
+    assert v["allValue"] == "'__ALL__'"
+    assert v["refresh"] == 1
     assert v["current"]["value"] == ["$__all"]
-    values = {part.split(":")[1].strip() for part in v["query"].split(",")}
-    assert values == {"ajuste_direto", "concurso_publico", "consulta_previa", "other"}
+    assert "v_contract_type_options" in v["query"]
+    assert "${show_all_contract_types}" in v["query"]
+    names = [x["name"] for x in d["templating"]["list"]]
+    assert names.index("show_all_contract_types") < names.index("contract_type")
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_show_all_contract_types_toggle(name: str) -> None:
+    v = _var(_load(name), "show_all_contract_types")
+    assert v["type"] == "custom"
+    assert v["label"] == "Show all contract types"
+    assert v["query"] == "Off : off,On : on"
+    assert v["current"]["value"] == "off"
+    assert v["multi"] is False
+    assert v["includeAll"] is False
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -57,7 +73,10 @@ def test_contract_queries_filter_on_contract_type(name: str) -> None:
     for o in _walk(_load(name)):
         sql = o.get("rawSql")
         if sql and VIEW_RE.search(sql):
-            assert "${contract_type:csv}" in sql, sql[:120]
+            assert "${contract_type:sqlstring}" in sql, sql[:120]
+            assert "${show_all_contract_types}" in sql, sql[:120]
+        if sql:
+            assert "${contract_type:csv}" not in sql, sql[:120]
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -105,3 +124,77 @@ def test_min_value_links_carry_contract_type(name: str) -> None:
         for v in o.values():
             if isinstance(v, str) and "var-min_contract_value=${" in v:
                 assert "${contract_type:queryparam}" in v, v
+                assert "${show_all_contract_types:queryparam}" in v, v
+
+
+def _panels(d: dict[str, Any]) -> list[dict[str, Any]]:
+    return [p for p in _walk(d["panels"]) if "gridPos" in p and "type" in p]
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_ten_year_quick_range(name: str) -> None:
+    ranges = _load(name)["timepicker"]["quick_ranges"]
+    assert {"display": "Last 10 years", "from": "now-10y/d", "to": "now/d"} in ranges
+    assert any(r["from"] == "now-5y/d" for r in ranges)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_horizontal_barcharts_truncate_labels(name: str) -> None:
+    for p in _panels(_load(name)):
+        if p["type"] == "barchart" and p["options"].get("orientation") == "horizontal":
+            assert "xTickLabelMaxLength" in p["options"], p["title"]
+
+
+@pytest.mark.parametrize(
+    ("name", "var"),
+    [
+        ("adjudicante-analysis.json", "adjudicante"),
+        ("adjudicatario-analysis.json", "adjudicatario"),
+    ],
+)
+def test_analysis_entity_vars_multi(name: str, var: str) -> None:
+    v = _var(_load(name), var)
+    assert v["multi"] is True
+    assert v["includeAll"] is False
+    assert isinstance(v["current"]["value"], list)
+    for o in _walk(_load(name)):
+        sql = o.get("rawSql")
+        if sql:
+            assert f"= '${{{var}}}'" not in sql, sql[:120]
+
+
+def test_adjudicatario_analysis_dedupes_joint_awards() -> None:
+    d = _load("adjudicatario-analysis.json")
+    for o in _walk(d["panels"]):
+        sql = o.get("rawSql")
+        if sql:
+            assert "v_adjudicatario_contracts" not in sql, sql[:120]
+            assert "contract_adjudicatarios WHERE entity_id = ANY(" in sql, sql[:120]
+
+
+@pytest.mark.parametrize("name", ANALYSIS)
+def test_analysis_nif_text_panel(name: str) -> None:
+    top = [p for p in _load(name)["panels"] if p["gridPos"]["y"] == 0]
+    assert len(top) == 1
+    assert top[0]["type"] == "text"
+    assert ":csv}" in top[0]["options"]["content"]
+
+
+def _overlaps(a: dict[str, int], b: dict[str, int]) -> bool:
+    return (
+        a["x"] < b["x"] + b["w"]
+        and b["x"] < a["x"] + a["w"]
+        and a["y"] < b["y"] + b["h"]
+        and b["y"] < a["y"] + a["h"]
+    )
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_no_overlapping_panels(name: str) -> None:
+    d = _load(name)
+    groups = [d["panels"]] + [p["panels"] for p in _walk(d["panels"]) if p.get("panels")]
+    for group in groups:
+        grids = [(p["title"], p["gridPos"]) for p in group]
+        for i, (t1, g1) in enumerate(grids):
+            for t2, g2 in grids[i + 1 :]:
+                assert not _overlaps(g1, g2), f"{t1} overlaps {t2}"
