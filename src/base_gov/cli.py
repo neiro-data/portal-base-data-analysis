@@ -369,6 +369,13 @@ def query_stats(
             help="Before repetition 1 of each query: restart postgres and drop the page cache.",
         ),
     ] = False,
+    fast: Annotated[
+        bool,
+        typer.Option(
+            "--fast",
+            help="Only pg_stat_statements snapshots: skip cgroup/memory sampling (cpu/peak null).",
+        ),
+    ] = False,
     yes: Annotated[bool, typer.Option("--yes", help="Skip the --cold confirmation.")] = False,
     out: Annotated[
         Path | None,
@@ -405,6 +412,7 @@ def query_stats(
             var_items=var or None,
             repeat=repeat,
             cold=cold,
+            fast=fast,
             out_dir=out,
             grafana_url=url,
         )

@@ -59,5 +59,5 @@ check: lint typecheck test ## Run lint + typecheck + test
 report: ## Render a dashboard to an A4 PDF (DASHBOARD=… VARS="k=v …" OUT=…)
 	uv run base-gov report $(DASHBOARD) $(foreach v,$(VARS),--var $(v)) $(if $(FROM),--from $(FROM)) $(if $(TO),--to $(TO)) $(if $(OUT),--out $(OUT)) $(if $(WORKERS),--workers $(WORKERS))
 
-query-stats: ## Time/CPU/memory per dashboard panel query (DASHBOARD="a b" RANGE="now-2y" REPEAT=5); run on an idle stack
-	uv run base-gov query-stats $(foreach d,$(DASHBOARD),--dashboard $(d)) $(foreach r,$(RANGE),--range $(r)) $(foreach v,$(VARS),--var $(v)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(OUT),--out $(OUT))
+query-stats: ## Time/CPU/memory per dashboard panel query (DASHBOARD="a b" RANGE="now-2y" REPEAT=5 FAST=1); run on an idle stack
+	uv run base-gov query-stats $(foreach d,$(DASHBOARD),--dashboard $(d)) $(foreach r,$(RANGE),--range $(r)) $(foreach v,$(VARS),--var $(v)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(OUT),--out $(OUT)) $(if $(FAST),--fast)

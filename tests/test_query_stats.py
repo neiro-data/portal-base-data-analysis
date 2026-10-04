@@ -347,6 +347,64 @@ def test_collect_row_count_is_panels_x_scenarios_x_repeat() -> None:
     assert be.cold == 0
 
 
+class NoCgroupBackend(FakeBackend):
+    def reset_peak(self, container: str) -> None:
+        raise AssertionError("reset_peak called in fast mode")
+
+    def cgroup(self, container: str) -> qs.CgroupSnap:
+        raise AssertionError("cgroup called in fast mode")
+
+
+def test_collect_fast_skips_cgroup_and_leaves_nulls(caplog: pytest.LogCaptureFixture) -> None:
+    be = NoCgroupBackend()
+    sc = qs.build_scenarios(["overview"], ranges=["now-90d"])
+    with caplog.at_level("INFO", logger=qs.logger.name):
+        rows = qs.collect(be, _grafana(be), sc, repeat=3, cold=True, now=NOW, fast=True)
+    assert be.cold > 0 and rows
+    for k in ("pg_cpu_ms", "pg_peak_mb", "grafana_cpu_ms", "grafana_peak_mb"):
+        assert all(r.get(k) is None for r in rows)
+    assert all(r["pg_exec_ms"] == 10.0 and r["wall_ms"] >= 0 for r in rows)
+    assert ("progress" in caplog.text) == (len(rows) >= qs.PROGRESS_EVERY)
+
+
+def test_fast_summary_renders_dashes(tmp_path: Path) -> None:
+    be = NoCgroupBackend()
+    out = qs.run_query_stats(
+        dashboards=["overview"], ranges=["now-90d"], repeat=2, out_dir=tmp_path / "run",
+        backend=be, client=_grafana(be), now=NOW, explain_top=1, fast=True,
+    )  # fmt: skip
+    df = pl.read_parquet(out / "runs.parquet")
+    assert df["pg_cpu_ms"].null_count() == df.height and df["pg_peak_mb"].null_count() == df.height
+    md = (out / "summary.md").read_text()
+    assert "| - | - |" in md and len(be.explained) == 1
+
+
+def test_collect_progress_every_50(caplog: pytest.LogCaptureFixture) -> None:
+    be = FakeBackend()
+    sc = qs.build_scenarios(["overview"], ranges=["now-90d"])
+    n = len(qs.query_panels(qs.load_any_dashboard("overview"), "overview"))
+    with caplog.at_level("INFO", logger=qs.logger.name):
+        rows = qs.collect(be, _grafana(be), sc, repeat=60, cold=False, now=NOW)
+    assert n * 60 >= 50 and len(rows) == n * 60
+    assert f"progress 50/{n * 60}" in caplog.text
+
+
+def test_cli_fast_wiring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake(**kw: Any) -> Path:
+        captured.update(kw)
+        return tmp_path
+
+    monkeypatch.setattr(qs, "run_query_stats", fake)
+    res = CliRunner().invoke(app, ["query-stats", "--fast", "--cold", "--yes"])
+    assert res.exit_code == 0, res.output
+    assert captured["fast"] is True and captured["cold"] is True
+    captured.clear()
+    assert CliRunner().invoke(app, ["query-stats"]).exit_code == 0
+    assert captured["fast"] is False
+
+
 def test_collect_cold_resets_before_each_first_rep() -> None:
     be = FakeBackend()
     sc = qs.build_scenarios(["contracts-table"], ranges=["now-2y"])

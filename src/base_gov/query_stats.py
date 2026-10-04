@@ -68,6 +68,9 @@ DEFAULT_RANGES: dict[str, tuple[str, ...]] = {
 }
 
 
+PROGRESS_EVERY = 50
+
+
 class QueryStatsError(ReportError):
     """Raised for unrecoverable query-stats problems (the CLI maps it to exit code 1)."""
 
@@ -720,29 +723,36 @@ def measure(
     sql: str,
     t0: datetime,
     t1: datetime,
+    *,
+    fast: bool = False,
 ) -> dict[str, Any]:
-    """One measured call: snapshot, POST, snapshot, deltas."""
-    for c in (PG_CONTAINER, GRAFANA_CONTAINER):
-        backend.reset_peak(c)
+    """One measured call: snapshot, POST, snapshot, deltas.
+
+    `fast` skips every cgroup read and the memory sampler; the cpu/peak columns stay null.
+    """
+    containers = (PG_CONTAINER, GRAFANA_CONTAINER)
+    if not fast:
+        for c in containers:
+            backend.reset_peak(c)
     pg_before = backend.pgss_snapshot()
-    cg_before = {c: backend.cgroup(c) for c in (PG_CONTAINER, GRAFANA_CONTAINER)}
+    cg_before = {} if fast else {c: backend.cgroup(c) for c in containers}
     started = time.perf_counter()
     executed, rows, error = ds_query(client, panel, sql, t0, t1)
     wall_ms = (time.perf_counter() - started) * 1000.0
-    cg_after = {c: backend.cgroup(c) for c in (PG_CONTAINER, GRAFANA_CONTAINER)}
+    cg_after = {} if fast else {c: backend.cgroup(c) for c in containers}
     pg_after = backend.pgss_snapshot()
-    pg_cpu, pg_peak = cgroup_delta(cg_before[PG_CONTAINER], cg_after[PG_CONTAINER])
-    gf_cpu, gf_peak = cgroup_delta(cg_before[GRAFANA_CONTAINER], cg_after[GRAFANA_CONTAINER])
     row: dict[str, Any] = {
         "wall_ms": wall_ms,
         "rows_returned": rows,
         "executed_sql": executed,
-        "pg_cpu_ms": pg_cpu,
-        "pg_peak_mb": pg_peak,
-        "grafana_cpu_ms": gf_cpu,
-        "grafana_peak_mb": gf_peak,
         "error": error,
     }
+    if not fast:
+        pg_cpu, pg_peak = cgroup_delta(cg_before[PG_CONTAINER], cg_after[PG_CONTAINER])
+        gf_cpu, gf_peak = cgroup_delta(cg_before[GRAFANA_CONTAINER], cg_after[GRAFANA_CONTAINER])
+        row.update(
+            pg_cpu_ms=pg_cpu, pg_peak_mb=pg_peak, grafana_cpu_ms=gf_cpu, grafana_peak_mb=gf_peak
+        )
     delta = pgss_delta(pg_before, pg_after)
     if delta is not None:
         row.update(
@@ -771,12 +781,19 @@ def collect(
     now: datetime,
     directory: Path = DASHBOARD_DIR,
     sink: list[dict[str, Any]] | None = None,
+    fast: bool = False,
 ) -> list[dict[str, Any]]:
     """Run every (panel, scenario, repetition) strictly serially.
 
     Rows are appended to `sink` as they complete so callers keep partial results on failure.
     """
     rows: list[dict[str, Any]] = sink if sink is not None else []
+    total = repeat * sum(
+        len(query_panels(load_any_dashboard(sc.dashboard, directory), sc.dashboard))
+        for sc in scenarios
+    )
+    done = 0
+    began = time.perf_counter()
     for sc in scenarios:
         dash = load_any_dashboard(sc.dashboard, directory)
         t0 = resolve_time(sc.time_from, now)
@@ -792,7 +809,7 @@ def collect(
                 logger.info(
                     "%s %s #%s rep %d/%d", sc.dashboard, sc.name, panel.panel_id, rep, repeat
                 )
-                row = measure(backend, client, panel, sql, t0, t1)
+                row = measure(backend, client, panel, sql, t0, t1, fast=fast)
                 row.update(
                     dashboard=sc.dashboard,
                     panel_id=panel.panel_id,
@@ -806,6 +823,14 @@ def collect(
                     time_to=sc.time_to,
                 )
                 rows.append(row)
+                done += 1
+                if done % PROGRESS_EVERY == 0:
+                    logger.info(
+                        "progress %d/%d executions, %.0f s elapsed",
+                        done,
+                        total,
+                        time.perf_counter() - began,
+                    )
     return rows
 
 
@@ -971,6 +996,7 @@ def run_query_stats(
     var_items: list[str] | None = None,
     repeat: int = 5,
     cold: bool = False,
+    fast: bool = False,
     out_dir: Path | None = None,
     grafana_url: str = "http://127.0.0.1:3001",
     timeout_s: int = 120,
@@ -1025,7 +1051,8 @@ def run_query_stats(
         )
         logger.info("%d scenarios x %d reps", len(scenarios), repeat)
         collect(
-            be, http, scenarios, repeat=repeat, cold=cold, now=now, directory=directory, sink=rows
+            be, http, scenarios, repeat=repeat, cold=cold, now=now, directory=directory, sink=rows,
+            fast=fast,
         )
         explain_slowest(be, rows, out / "plans", explain_top)
     finally:

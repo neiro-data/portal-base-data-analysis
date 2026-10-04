@@ -190,6 +190,10 @@ uv run base-gov query-stats --cold    # restart postgres and drop the page cache
   container-wide. Close Grafana in the browser and stop other reports or ingests. The tool warns if
   other `grafana_reader` sessions are active.
 - Repetition 1 is marked `warmup` and is left out of the percentiles. With `--repeat 1` the summary is empty.
+- `--fast` (`make query-stats FAST=1`) takes only the `pg_stat_statements` before/after snapshots per execution and
+  skips the cgroup reads and the memory sampler, which are most of the overhead. Wall time, Postgres time, buffers,
+  rows and the EXPLAIN pass stay. The CPU and peak-memory columns are empty (`-` in `summary.md`). It can be combined
+  with `--cold`. A progress line is logged every 50 executions.
 - `--cold` restarts postgres and drops the VM page cache before the first repetition of each query. It asks for
   confirmation. `--yes` skips it.
 - Output: `reports/query-stats/<YYYYmmdd-HHMM>/` with `runs.parquet`, `summary.md` (worst panels first) and
