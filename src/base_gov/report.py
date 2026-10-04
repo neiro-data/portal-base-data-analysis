@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -356,21 +358,34 @@ def render_url(
     return f"{base.rstrip('/')}/render/d-solo/{quote(uid)}?{urlencode(params, quote_via=quote)}"
 
 
+BUSY_RETRIES = 20
+BUSY_BACKOFF_S = 1.0
+
+
 def fetch_png(client: httpx.Client, url: str, title: str = "") -> bytes:
-    """GET a rendered panel; require a PNG. Retries once on timeout."""
-    for attempt in (1, 2):
+    """GET a rendered panel; require a PNG. Retries once on timeout, and on HTTP 429
+    (renderer busy: its memory-based rate limit) up to BUSY_RETRIES times."""
+    timeouts = busy = 0
+    while True:
         try:
             resp = client.get(url)
-            break
         except httpx.TimeoutException as exc:
-            if attempt == 2:
+            timeouts += 1
+            if timeouts == 2:
                 raise RenderError(f"panel {title!r}: render timed out twice") from exc
             logger.warning("panel %r timed out, retrying once", title)
+            continue
         except httpx.TransportError as exc:
             raise RenderError(
                 f"panel {title!r}: {type(exc).__name__}: {exc}; the renderer may be down "
                 "(crashed or OOM-killed?): check `docker compose --profile dashboard ps`"
             ) from exc
+        if resp.status_code == 429 and busy < BUSY_RETRIES:
+            busy += 1
+            logger.debug("panel %r: renderer busy, retry %d", title, busy)
+            time.sleep(BUSY_BACKOFF_S)
+            continue
+        break
     ctype = resp.headers.get("content-type", "")
     if resp.status_code != 200 or not ctype.startswith("image/png"):
         raise RenderError(
@@ -541,6 +556,7 @@ def generate_report(
     time_to: str | None = None,
     grafana_url: str = "http://127.0.0.1:3001",
     timeout_s: int = 60,
+    workers: int = 3,
     dashboard_dir: Path = DASHBOARD_DIR,
     fetch: Fetch | None = None,
     now: datetime | None = None,
@@ -583,14 +599,30 @@ def generate_report(
                     ) from exc
                 raise
 
+    render = fetch
+    done = 0
+    lock = threading.Lock()
+
+    def render_one(p: ReportPanel) -> bytes:
+        # The renderer spends ~5s per panel in fixed readiness waits, so panels render
+        # concurrently; httpx.Client is thread-safe.
+        nonlocal done
+        started = time.monotonic()
+        url = render_url(grafana_url, uid, p, chosen, t0, t1, timeout_s=timeout_s)
+        png = render(p, url)
+        with lock:
+            done += 1
+            logger.info(
+                "[%d/%d] %s (%.1fs)", done, len(panels), p.title, time.monotonic() - started
+            )
+        return png
+
+    pool = ThreadPoolExecutor(max_workers=max(1, workers))
     try:
-        images: dict[int, bytes] = {}
-        for i, p in enumerate(panels, start=1):
-            started = time.monotonic()
-            url = render_url(grafana_url, uid, p, chosen, t0, t1, timeout_s=timeout_s)
-            images[p.id] = fetch(p, url)
-            logger.info("[%d/%d] %s (%.1fs)", i, len(panels), p.title, time.monotonic() - started)
+        futures = {p.id: pool.submit(render_one, p) for p in panels}
+        images = {pid: f.result() for pid, f in futures.items()}
     finally:
+        pool.shutdown(wait=True, cancel_futures=True)
         if client is not None:
             client.close()
 

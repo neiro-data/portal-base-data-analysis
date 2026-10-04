@@ -314,6 +314,9 @@ def report(
     timeout: Annotated[
         int, typer.Option("--timeout", min=1, help="Render timeout per panel, in seconds.")
     ] = 60,
+    workers: Annotated[
+        int, typer.Option("--workers", min=1, help="Panels rendered concurrently.")
+    ] = 3,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Render a Grafana dashboard to an A4 PDF via the image renderer."""
@@ -335,6 +338,7 @@ def report(
             time_to=time_to,
             grafana_url=url,
             timeout_s=timeout,
+            workers=workers,
         )
     except report_module.ReportError as exc:
         typer.echo(str(exc), err=True)
