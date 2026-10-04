@@ -122,7 +122,7 @@ columns are plain calendar dates, so no timezone meaning is lost.
 
 ## Migrations
 
-`sql/00*.sql` runs in order and is idempotent. It is safe against a warm volume.
+`sql/0*.sql` runs in order and is idempotent. It is safe against a warm volume.
 
 | File | Content |
 | --- | --- |
@@ -135,11 +135,12 @@ columns are plain calendar dates, so no timezone meaning is lost.
 | `007_ingestion_metadata.sql` | Guarded rename `ingested_at` -> `first_ingested_at`, drops both timestamp defaults, adds the treated columns and three indexes. `002` applies the same statements so `005` resolves on a warm volume. |
 | `008_entity_dashboard_views.sql` | `v_adjudicatario_contracts`. |
 | `009_dashboard_filter_support.sql` | `jit = off` for `grafana_reader` (guarded) and `v_contracts_below_min`. |
+| `010_query_stats.sql` | The `pg_stat_statements` extension. Compose preloads the library. Used by `base-gov query-stats`. |
 
 `sql/ingest/` holds the load steps that `bin/ingest-postgres.sh` runs: `10_stage_entities.sql`,
 `20_stage_contracts.sql`, `30_rebuild_bridge.sql`.
 
-The numbers have no gaps and no duplicates: 001 to 009, and 10/20/30.
+The numbers have no gaps and no duplicates: 001 to 010, and 10/20/30.
 
 `004_grafana_role.sql` grants `SELECT` on every table and view that the owner role creates in
 the schema afterwards. The views of 005 need no separate grant.

@@ -11,7 +11,7 @@ services:
     container_name: pbd-postgres
     # Docker's 64MB default /dev/shm overflows on parallel queries over 10y of data
     shm_size: 1gb
-    command: postgres -c shared_preload_libraries=pg_parquet -c max_wal_size=2GB -c shared_buffers=512MB -c effective_cache_size=1536MB
+    command: postgres -c shared_preload_libraries=pg_parquet,pg_stat_statements -c track_io_timing=on -c pg_stat_statements.track=top -c pg_stat_statements.max=5000 -c pg_stat_statements.track_planning=on -c max_wal_size=2GB -c shared_buffers=512MB -c effective_cache_size=1536MB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-base_gov}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-base_gov}
@@ -20,8 +20,8 @@ services:
       - "${POSTGRES_PORT:-55433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # NOTE: the whole ./sql tree is mounted here, but only sql/00*.sql runs
-      # on init — the postgres entrypoint globs this dir non-recursively, so
+      # NOTE: the whole ./sql tree is mounted here, but only top-level sql/*.sql
+      # (00*, 010, ...) runs on init — the postgres entrypoint globs this dir non-recursively, so
       # sql/ingest/ (a subdirectory) is skipped. Keep ingest scripts nested
       # under sql/ingest/, never as sql/NN_*.sql, or they'll auto-run on
       # every fresh volume init. See tests/test_sql_migrations.py.

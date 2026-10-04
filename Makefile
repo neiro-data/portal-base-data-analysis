@@ -4,7 +4,7 @@ export
 POSTGRES_USER ?= base_gov
 POSTGRES_DB ?= base_gov
 
-.PHONY: help env build-db up down destroy logs ps psql init-db ingest-postgres lint fmt typecheck test check report
+.PHONY: help env build-db up down destroy logs ps psql init-db ingest-postgres lint fmt typecheck test check report query-stats
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-18s %s\n", $$1, $$2}'
@@ -33,8 +33,8 @@ ps: ## Show running services
 psql: ## Open a psql shell against the running container
 	docker compose exec postgres psql -U $$POSTGRES_USER -d $$POSTGRES_DB
 
-init-db: ## Re-apply sql/00*.sql against the running container (safe on a warm volume)
-	@for f in sql/00*.sql; do \
+init-db: ## Re-apply sql/0*.sql against the running container (safe on a warm volume)
+	@for f in sql/0*.sql; do \
 		echo "==> $$f"; \
 		docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $$POSTGRES_USER -d $$POSTGRES_DB -f - < $$f; \
 	done
@@ -58,3 +58,6 @@ check: lint typecheck test ## Run lint + typecheck + test
 
 report: ## Render a dashboard to an A4 PDF (DASHBOARD=… VARS="k=v …" OUT=…)
 	uv run base-gov report $(DASHBOARD) $(foreach v,$(VARS),--var $(v)) $(if $(FROM),--from $(FROM)) $(if $(TO),--to $(TO)) $(if $(OUT),--out $(OUT)) $(if $(WORKERS),--workers $(WORKERS))
+
+query-stats: ## Time/CPU/memory per dashboard panel query (DASHBOARD="a b" RANGE="now-2y" REPEAT=5); run on an idle stack
+	uv run base-gov query-stats $(foreach d,$(DASHBOARD),--dashboard $(d)) $(foreach r,$(RANGE),--range $(r)) $(foreach v,$(VARS),--var $(v)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(OUT),--out $(OUT))
