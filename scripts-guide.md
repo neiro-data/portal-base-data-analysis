@@ -83,12 +83,12 @@ Start the stack and load the parquet files into the `procurement` schema.
 cp .env.example .env
 make build-db          # compiles pg_parquet from source; first build only, slow
 make up                # start the postgres service
-make init-db           # re-apply sql/00*.sql
+make init-db           # re-apply sql/0*.sql
 bin/ingest-postgres.sh # or: make ingest-postgres
 make psql              # open a psql shell
 ```
 
-`make up` applies `sql/00*.sql` automatically the first time it creates a fresh volume. The
+`make up` applies `sql/0*.sql` automatically the first time it creates a fresh volume. The
 PostgreSQL entrypoint does this. Use `make init-db` to apply the files again later, for example
 after a schema change, against a warm volume.
 
@@ -168,6 +168,39 @@ shows only the rows that fit in its box.
 
 Troubleshooting: a blank or HTML response for a panel means the renderer is not running. Run
 `docker compose --profile dashboard ps`.
+
+### Query statistics
+
+`base-gov query-stats` measures every panel query (`rawSql`) of the six dashboards. It sends each
+query through Grafana `/api/ds/query`, so it uses the same SQL and the same datasource user as the
+dashboards. For each panel, scenario (time range and variables) and repetition it records:
+
+- wall-clock time of the Grafana round trip;
+- Postgres planning and execution time, shared buffers hit/read and temp blocks, from `pg_stat_statements`;
+- CPU time and peak memory of the `pbd-postgres` and `pbd-grafana` containers (cgroup counters);
+- for the 10 slowest pairs, `EXPLAIN (ANALYZE, BUFFERS, MEMORY)` with sort/hash memory and spills.
+
+```bash
+make query-stats DASHBOARD=overview RANGE=now-90d REPEAT=3
+make query-stats                      # all dashboards, default scenarios, 5 repeats
+uv run base-gov query-stats --cold    # restart postgres and drop the page cache first
+```
+
+- Run on an **idle stack**. Queries run one at a time, and the CPU and memory numbers are
+  container-wide. Close Grafana in the browser and stop other reports or ingests. The tool warns if
+  other `grafana_reader` sessions are active.
+- Repetition 1 is marked `warmup` and is left out of the percentiles. With `--repeat 1` the summary is empty.
+- `--fast` (`make query-stats FAST=1`) takes only the `pg_stat_statements` before/after snapshots per execution and
+  skips the cgroup reads and the memory sampler, which are most of the overhead. Wall time, Postgres time, buffers,
+  rows and the EXPLAIN pass stay. The CPU and peak-memory columns are empty (`-` in `summary.md`). It can be combined
+  with `--cold`. A progress line is logged every 50 executions.
+- `--cold` restarts postgres and drops the VM page cache before the first repetition of each query. It asks for
+  confirmation. `--yes` skips it.
+- Output: `reports/query-stats/<YYYYmmdd-HHMM>/` with `runs.parquet`, `summary.md` (worst panels first) and
+  `plans/*.json`. `reports/` is gitignored.
+- Needs `pg_stat_statements`. The compose file preloads it, with `track_io_timing` and
+  `pg_stat_statements.track_planning`. After you pull this change, run `docker compose up -d postgres`
+  and `make init-db`. The `make init-db` glob is now `sql/0*.sql`, so `010_query_stats.sql` is applied.
 
 ## Development
 

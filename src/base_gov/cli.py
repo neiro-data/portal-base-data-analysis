@@ -15,6 +15,7 @@ import typer
 from base_gov import analysis, dados_gov, raw_ingest
 from base_gov import bulk_ingest as bulk_ingest_module
 from base_gov import entities_db as entities_db_module
+from base_gov import query_stats as query_stats_module
 from base_gov import report as report_module
 from base_gov.stats import MIN_VALUE
 from base_gov.xlsx_ingest import DEFAULT_ROWS, load_contracts
@@ -339,6 +340,81 @@ def report(
             grafana_url=url,
             timeout_s=timeout,
             workers=workers,
+        )
+    except report_module.ReportError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(str(path))
+
+
+@app.command("query-stats")
+def query_stats(
+    dashboard: Annotated[
+        list[str] | None,
+        typer.Option("--dashboard", help="Dashboard stem (repeatable); default: all six."),
+    ] = None,
+    time_range: Annotated[
+        list[str] | None,
+        typer.Option("--range", help="Range start, e.g. now-2y (repeatable); `to` is now."),
+    ] = None,
+    var: Annotated[
+        list[str] | None,
+        typer.Option("--var", help="name=value (repeatable); replaces the built-in variable sets."),
+    ] = None,
+    repeat: Annotated[int, typer.Option("--repeat", min=1, help="Repetitions per query.")] = 5,
+    cold: Annotated[
+        bool,
+        typer.Option(
+            "--cold",
+            help="Before repetition 1 of each query: restart postgres and drop the page cache.",
+        ),
+    ] = False,
+    fast: Annotated[
+        bool,
+        typer.Option(
+            "--fast",
+            help="Only pg_stat_statements snapshots: skip cgroup/memory sampling (cpu/peak null).",
+        ),
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the --cold confirmation.")] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output dir; default reports/query-stats/<stamp>."),
+    ] = None,
+    grafana_url: Annotated[
+        str | None,
+        typer.Option("--grafana-url", help="Grafana base URL (env GRAFANA_URL; else :3001)."),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Measure time, CPU and memory of every dashboard panel query (Postgres + Grafana).
+
+    Runs strictly serially and reads container-wide cgroup counters: run it on an otherwise
+    idle stack (no Grafana UI sessions, no report, no ingest). Needs pg_stat_statements
+    (sql/010_query_stats.sql and the compose preload).
+    """
+    _configure_logging(verbose)
+    url = (
+        grafana_url
+        or os.environ.get("GRAFANA_URL")
+        or f"http://127.0.0.1:{os.environ.get('GRAFANA_PORT', '3001')}"
+    )
+    if cold and not yes:
+        typer.confirm(
+            "--cold restarts the postgres container and drops the VM page cache before each "
+            "query's first repetition. Continue?",
+            abort=True,
+        )
+    try:
+        path = query_stats_module.run_query_stats(
+            dashboards=dashboard or None,
+            ranges=time_range or None,
+            var_items=var or None,
+            repeat=repeat,
+            cold=cold,
+            fast=fast,
+            out_dir=out,
+            grafana_url=url,
         )
     except report_module.ReportError as exc:
         typer.echo(str(exc), err=True)

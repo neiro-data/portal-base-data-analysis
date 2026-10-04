@@ -18,7 +18,7 @@ DASHBOARD_DIR = REPO_ROOT / "docker" / "grafana" / "dashboards"
 STAGE_SQL = SQL_DIR / "ingest" / "20_stage_contracts.sql"
 
 ALL_SQL_FILES = sorted(SQL_DIR.rglob("*.sql"))
-MIGRATION_FILES = sorted(SQL_DIR.glob("00*.sql"))
+MIGRATION_FILES = sorted(SQL_DIR.glob("0*.sql"))
 
 
 @pytest.mark.parametrize("path", ALL_SQL_FILES, ids=lambda p: str(p.relative_to(REPO_ROOT)))
@@ -371,3 +371,18 @@ def test_entity_dashboards_are_multi_select(name: str, var: str) -> None:
 @pytest.mark.parametrize("path", DASHBOARD_FILES, ids=lambda p: p.name)
 def test_value_filter_uses_absolute_value(path: Path) -> None:
     assert not re.search(r"preco_contratual\s*>=\s*\$\{min_contract_value\}", path.read_text())
+
+
+def test_010_query_stats_needs_compose_preload() -> None:
+    path = SQL_DIR / "010_query_stats.sql"
+    if not path.exists():
+        pytest.skip("010 not present")
+    assert re.search(
+        r"CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+pg_stat_statements\s+SCHEMA\s+public",
+        _sql_code(path),
+        re.I,
+    )
+    compose = (REPO_ROOT / "docker-compose.yml").read_text()
+    preload = re.search(r"shared_preload_libraries=(\S+)", compose)
+    assert preload is not None
+    assert "pg_stat_statements" in preload.group(1).split(",")

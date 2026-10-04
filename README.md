@@ -102,8 +102,9 @@ docker-compose.yml      postgres service + grafana + image renderer (profile: da
 notebooks/              exploratory analysis notebooks, run over the parquet files directly
 sql/                    schema, views and indexes (001-007); sql/ingest/ holds the load steps
 src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + the `base-gov` CLI
-                        (report.py builds the dashboard PDF reports)
-reports/                gitignored: PDF reports from `make report`
+                        (report.py builds the dashboard PDF reports,
+                        query_stats.py measures panel query cost)
+reports/                gitignored: PDF reports (`make report`), query-stats runs
 tests/                  pytest suite, no database required
 data/                   gitignored: source/ (xlsx), raw/ (raw parquet), contracts.parquet,
                         entity parquets, manifest.json (download checksums)
