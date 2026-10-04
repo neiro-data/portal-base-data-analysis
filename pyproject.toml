@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.28.1",
     "polars>=1.44.1",
     "rapidfuzz>=3.14.6",
+    "reportlab>=5.0.1",
     "typer>=0.27.2",
 ]
 
@@ -29,6 +30,7 @@ dev = [
     "nbformat>=5.11.1",
     "pytest>=9.1.1",
     "ruff>=0.16.5",
+    "types-reportlab>=5.0.0.20260911",
     "xlsxwriter>=3.2.9",
 ]
 

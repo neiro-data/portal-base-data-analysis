@@ -136,6 +136,36 @@ The two overview dashboards link to the two analysis dashboards. Click an adjudi
 adjudicatário bar to open its analysis dashboard. The link keeps the entity, the
 `min_contract_value` and the time range. The analysis dashboards link to each other in the same way.
 
+### PDF reports
+
+A browser print of a dashboard is poor: panels that are off screen print blank. Instead,
+`base-gov report` renders each panel to a PNG with the Grafana image renderer. It then builds an
+A4 PDF. The renderer is the `renderer` service (`pbd-renderer`) in the `dashboard` profile. It has
+no published port. Set `GRAFANA_RENDERER_TOKEN` in `.env` to replace the default token.
+
+```bash
+docker compose --profile dashboard up -d
+make report DASHBOARD=overview
+make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412"
+make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412 adjudicante=500100144" FROM=now-5y OUT=reports/two-buyers.pdf
+```
+
+`base-gov report DASHBOARD` takes a file stem or a uid. These dashboards work: `overview`,
+`overview-municipios`, `adjudicante-analysis`, `adjudicatario-analysis`. Flags:
+
+- `--var name=value`: repeat it for more values. Single-value variables take one value.
+- `--from`, `--to`: default is the dashboard time range. `--to now/d` includes all of today.
+- `--out`: default is `reports/<stem>-<YYYYmmdd-HHMM>.pdf`.
+- `--grafana-url`: default is `GRAFANA_URL`, or `http://127.0.0.1:$GRAFANA_PORT`.
+- `--timeout`: render timeout for each panel, in seconds (default 60).
+
+The PDF has a header with the filters and the time range. It has one heading for each dashboard
+row. It leaves out the contracts table, the "Rows shown" stat and all text panels. A table panel
+shows only the rows that fit in its box.
+
+Troubleshooting: a blank or HTML response for a panel means the renderer is not running. Run
+`docker compose --profile dashboard ps`.
+
 ## Development
 
 ```bash
