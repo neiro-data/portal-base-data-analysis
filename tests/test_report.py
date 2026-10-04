@@ -487,3 +487,15 @@ def test_cli_default_logging_shows_progress(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(logging, "basicConfig", lambda **kw: seen.update(kw))
     cli._configure_logging(False)
     assert seen["level"] == logging.INFO
+
+
+def test_parse_vars_comma_list() -> None:
+    dash = report.load_dashboard("adjudicante-analysis")
+    assert report.parse_vars(["adjudicante=1, 2,,3", "adjudicante=4"], dash) == {
+        "adjudicante": ["1", "2", "3", "4"]
+    }
+    with pytest.raises(report.ReportError):
+        report.parse_vars(["adjudicante=,"], dash)
+    # single-value variables are never split
+    with pytest.raises(report.ReportError):
+        report.parse_vars(["min_contract_value=1", "min_contract_value=2"], dash)

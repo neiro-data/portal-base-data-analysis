@@ -290,7 +290,10 @@ def report(
     ],
     var: Annotated[
         list[str] | None,
-        typer.Option("--var", help="name=value (repeatable; repeat the name for multi-value)."),
+        typer.Option(
+            "--var",
+            help="name=value (repeatable). Multi-value: repeat the name or use a comma list.",
+        ),
     ] = None,
     time_from: Annotated[
         str | None, typer.Option("--from", help="Range start (e.g. now-2y); default: dashboard's.")

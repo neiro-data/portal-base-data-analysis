@@ -148,12 +148,13 @@ docker compose --profile dashboard up -d
 make report DASHBOARD=overview
 make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412"
 make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412 adjudicante=500100144" FROM=now-5y OUT=reports/two-buyers.pdf
+make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412,500100144"
 ```
 
 `base-gov report DASHBOARD` takes a file stem or a uid. These dashboards work: `overview`,
 `overview-municipios`, `adjudicante-analysis`, `adjudicatario-analysis`. Flags:
 
-- `--var name=value`: repeat it for more values. Single-value variables take one value.
+- `--var name=value`: for a multi-value variable (`adjudicante`, `adjudicatario`), give a comma list (`adjudicante=A,B,C`) or repeat the flag (`--var adjudicante=A --var adjudicante=B`). Both forms can mix. Single-value variables take one value and are never split.
 - `--from`, `--to`: default is the dashboard time range. `--to now/d` includes all of today.
 - `--out`: default is `reports/<stem>-<YYYYmmdd-HHMM>.pdf`.
 - `--grafana-url`: default is `GRAFANA_URL`, or `http://127.0.0.1:$GRAFANA_PORT`.

@@ -75,7 +75,7 @@ adjudicante and an adjudicatário.
 Run the ingest before you start Grafana, or the dashboards show no data.
 
 To get an A4 PDF of a dashboard, run `make report DASHBOARD=adjudicante-analysis VARS="adjudicante=<NIF>"`.
-The PDF goes to `reports/`.
+For more than one NIF, use a comma list: `adjudicante=<NIF1>,<NIF2>`. The PDF goes to `reports/`.
 
 Grafana runs with anonymous Editor access and binds to `127.0.0.1` only. Do not expose it. See
 [README_AGENT.md — Security notes](README_AGENT.md#security-notes).

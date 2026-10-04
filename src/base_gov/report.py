@@ -186,7 +186,10 @@ def layout_bands(section: Section) -> list[Band]:
 
 
 def parse_vars(items: list[str], dash: Mapping[str, Any]) -> dict[str, list[str]]:
-    """Parse repeated `name=value` options; validate against the dashboard's variables."""
+    """Parse repeated `name=value` options; validate against the dashboard's variables.
+
+    A multi-value variable also accepts a comma-separated list: `name=a,b` equals `name=a name=b`.
+    """
     known = {v["name"]: v for v in dash.get("templating", {}).get("list", [])}
     out: dict[str, list[str]] = {}
     for item in items:
@@ -195,7 +198,13 @@ def parse_vars(items: list[str], dash: Mapping[str, Any]) -> dict[str, list[str]
             raise ReportError(f"invalid --var {item!r}; expected name=value")
         if name not in known:
             raise ReportError(f"unknown variable {name!r}; known: {', '.join(sorted(known))}")
-        out.setdefault(name, []).append(value)
+        if known[name].get("multi") and "," in value:
+            parts = [p.strip() for p in value.split(",") if p.strip()]
+            if not parts:
+                raise ReportError(f"invalid --var {item!r}; no values in the list")
+            out.setdefault(name, []).extend(parts)
+        else:
+            out.setdefault(name, []).append(value)
     for name, values in out.items():
         if len(values) > 1 and not known[name].get("multi"):
             raise ReportError(f"variable {name!r} is not multi-value; got {len(values)} values")
