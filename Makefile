@@ -57,4 +57,4 @@ test: ## Run pytest
 check: lint typecheck test ## Run lint + typecheck + test
 
 report: ## Render a dashboard to an A4 PDF (DASHBOARD=… VARS="k=v …" OUT=…)
-	uv run base-gov report $(DASHBOARD) $(foreach v,$(VARS),--var $(v)) $(if $(FROM),--from $(FROM)) $(if $(TO),--to $(TO)) $(if $(OUT),--out $(OUT))
+	uv run base-gov report $(DASHBOARD) $(foreach v,$(VARS),--var $(v)) $(if $(FROM),--from $(FROM)) $(if $(TO),--to $(TO)) $(if $(OUT),--out $(OUT)) $(if $(WORKERS),--workers $(WORKERS))

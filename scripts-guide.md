@@ -159,6 +159,8 @@ make report DASHBOARD=adjudicante-analysis VARS="adjudicante=500189412,500100144
 - `--out`: default is `reports/<stem>-<YYYYmmdd-HHMM>.pdf`.
 - `--grafana-url`: default is `GRAFANA_URL`, or `http://127.0.0.1:$GRAFANA_PORT`.
 - `--timeout`: render timeout for each panel, in seconds (default 60).
+- `--workers`: number of panels to render at the same time (default 3; `make report WORKERS=…`). The
+  renderer waits about 5 s for each panel, so one worker makes a report slow.
 
 The PDF has a header with the filters and the time range. It has one heading for each dashboard
 row. It leaves out the contracts table, the "Rows shown" stat and all text panels. A table panel

@@ -176,6 +176,25 @@ def test_fetch_png_gives_up_after_second_timeout() -> None:
         report.fetch_png(_client(handler), "/x")
 
 
+def test_fetch_png_waits_out_busy_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(report, "BUSY_BACKOFF_S", 0)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            return httpx.Response(429, json={"message": "Too many rendering requests"})
+        return httpx.Response(200, content=_png(), headers={"content-type": "image/png"})
+
+    assert report.fetch_png(_client(handler), "/x")
+    assert calls == 3
+
+    always_busy = _client(lambda r: httpx.Response(429, json={"message": "busy"}))
+    with pytest.raises(report.RenderError, match="429"):
+        report.fetch_png(always_busy, "/x")
+
+
 @pytest.mark.parametrize("stem", sorted(report.REPORTABLE))
 def test_generate_report_fetches_each_panel_once(stem: str, tmp_path: Path) -> None:
     seen: list[int] = []
