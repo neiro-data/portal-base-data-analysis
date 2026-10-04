@@ -39,12 +39,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      renderer:
+        condition: service_started
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-base_gov}
       GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-changeme_grafana}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Remote image renderer, used by `base-gov report` (PNG panels -> PDF).
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
+      GF_RENDERING_RENDERER_TOKEN: ${GRAFANA_RENDERER_TOKEN:-changeme_renderer}
+      # GF_LOG_FILTERS: rendering:debug
     ports:
       # Loopback-only: anonymous Editor access above has no auth, so this
       # must not be reachable beyond the local machine.
@@ -53,6 +60,14 @@ services:
       - grafana-data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    profiles: ["dashboard"]
+
+  renderer:
+    image: grafana/grafana-image-renderer:v5.12.5
+    container_name: pbd-renderer
+    # No published port: only reachable from grafana on the compose network.
+    environment:
+      AUTH_TOKEN: ${GRAFANA_RENDERER_TOKEN:-changeme_renderer}
     profiles: ["dashboard"]
 
 volumes:

@@ -74,6 +74,9 @@ adjudicante and an adjudicatário.
 
 Run the ingest before you start Grafana, or the dashboards show no data.
 
+To get an A4 PDF of a dashboard, run `make report DASHBOARD=adjudicante-analysis VARS="adjudicante=<NIF>"`.
+For more than one NIF, use a comma list: `adjudicante=<NIF1>,<NIF2>`. The PDF goes to `reports/`.
+
 Grafana runs with anonymous Editor access and binds to `127.0.0.1` only. Do not expose it. See
 [README_AGENT.md — Security notes](README_AGENT.md#security-notes).
 
@@ -95,10 +98,12 @@ Full table and view reference, the migration list, and the pipeline are in **[SC
 ```
 bin/                    download-contracts.sh, backfill-contracts.sh, ingest-contracts.sh (xlsx → parquet), ingest-postgres.sh (parquet → PostgreSQL)
 docker/                 postgres (pg_parquet build) + grafana provisioning and dashboards
-docker-compose.yml      postgres service + grafana (profile: dashboard)
+docker-compose.yml      postgres service + grafana + image renderer (profile: dashboard)
 notebooks/              exploratory analysis notebooks, run over the parquet files directly
 sql/                    schema, views and indexes (001-007); sql/ingest/ holds the load steps
 src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + the `base-gov` CLI
+                        (report.py builds the dashboard PDF reports)
+reports/                gitignored: PDF reports from `make report`
 tests/                  pytest suite, no database required
 data/                   gitignored: source/ (xlsx), raw/ (raw parquet), contracts.parquet,
                         entity parquets, manifest.json (download checksums)

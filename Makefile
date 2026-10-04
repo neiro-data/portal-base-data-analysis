@@ -4,7 +4,7 @@ export
 POSTGRES_USER ?= base_gov
 POSTGRES_DB ?= base_gov
 
-.PHONY: help env build-db up down destroy logs ps psql init-db ingest-postgres lint fmt typecheck test check
+.PHONY: help env build-db up down destroy logs ps psql init-db ingest-postgres lint fmt typecheck test check report
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-18s %s\n", $$1, $$2}'
@@ -55,3 +55,6 @@ test: ## Run pytest
 	uv run pytest
 
 check: lint typecheck test ## Run lint + typecheck + test
+
+report: ## Render a dashboard to an A4 PDF (DASHBOARD=… VARS="k=v …" OUT=…)
+	uv run base-gov report $(DASHBOARD) $(foreach v,$(VARS),--var $(v)) $(if $(FROM),--from $(FROM)) $(if $(TO),--to $(TO)) $(if $(OUT),--out $(OUT))

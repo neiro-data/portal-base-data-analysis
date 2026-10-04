@@ -14,6 +14,9 @@ __pycache__/
 # Scraped output — regenerate with `uv run base-gov ...`
 data/
 
+# Generated PDF dashboard reports (`base-gov report`)
+reports/
+
 # Claude scratch
 .claude/
 [Pp][Ll][Aa][Nn]-*.md

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ import typer
 from base_gov import analysis, dados_gov, raw_ingest
 from base_gov import bulk_ingest as bulk_ingest_module
 from base_gov import entities_db as entities_db_module
+from base_gov import report as report_module
 from base_gov.stats import MIN_VALUE
 from base_gov.xlsx_ingest import DEFAULT_ROWS, load_contracts
 
@@ -279,6 +281,65 @@ def download_contracts(
                 time.sleep(1.0)
         if failures:
             raise typer.Exit(1)
+
+
+@app.command("report")
+def report(
+    dashboard: Annotated[
+        str, typer.Argument(help="Dashboard file stem (adjudicante-analysis) or uid.")
+    ],
+    var: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--var",
+            help="name=value (repeatable). Multi-value: repeat the name or use a comma list.",
+        ),
+    ] = None,
+    time_from: Annotated[
+        str | None, typer.Option("--from", help="Range start (e.g. now-2y); default: dashboard's.")
+    ] = None,
+    time_to: Annotated[
+        str | None, typer.Option("--to", help="Range end (e.g. now); default: dashboard's.")
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Output PDF; default reports/<stem>-<stamp>.pdf.")
+    ] = None,
+    grafana_url: Annotated[
+        str | None,
+        typer.Option(
+            "--grafana-url",
+            help="Grafana base URL (env GRAFANA_URL; else http://127.0.0.1:$GRAFANA_PORT|3001).",
+        ),
+    ] = None,
+    timeout: Annotated[
+        int, typer.Option("--timeout", min=1, help="Render timeout per panel, in seconds.")
+    ] = 60,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Render a Grafana dashboard to an A4 PDF via the image renderer."""
+    _configure_logging(verbose)
+    url = (
+        grafana_url
+        or os.environ.get("GRAFANA_URL")
+        or f"http://127.0.0.1:{os.environ.get('GRAFANA_PORT', '3001')}"
+    )
+    stem = dashboard.removesuffix(".json")
+    stem = next((s for s, uid in report_module.REPORTABLE.items() if uid == stem), stem)
+    target = out or Path("reports") / f"{stem}-{datetime.now():%Y%m%d-%H%M}.pdf"
+    try:
+        path = report_module.generate_report(
+            dashboard,
+            target,
+            variables=var or [],
+            time_from=time_from,
+            time_to=time_to,
+            grafana_url=url,
+            timeout_s=timeout,
+        )
+    except report_module.ReportError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(str(path))
 
 
 if __name__ == "__main__":  # pragma: no cover
