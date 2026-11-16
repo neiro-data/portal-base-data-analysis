@@ -9,6 +9,8 @@ it merges against the previous treated file. It never drops a row: the minimum-v
 from __future__ import annotations
 
 import html
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 import polars as pl
 
@@ -40,6 +42,7 @@ def unescape_html_entities(expr: pl.Expr) -> pl.Expr:
     """Decode HTML entities observed in the raw export's free-text columns."""
     return expr.map_elements(_unescape_html, return_dtype=pl.String)
 
+
 TREATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "idcontrato": pl.Int64,
     "ano": pl.Int32,
@@ -65,7 +68,6 @@ TREATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "cpv": pl.String,
     "nuts": pl.String,
     "concorrentes": pl.String,
-    "TipoCriterioAdjudicacao": pl.String,
     "n_concorrentes": pl.UInt32,
     "is_municipio": pl.Boolean,
     "is_below_min_value": pl.Boolean,
@@ -99,8 +101,101 @@ _RENAMES = {
     "cpv": "CPV",
     "nuts": "NUTs",
     "concorrentes": "concorrentes",
-    "TipoCriterioAdjudicacao": "TipoCriterioAdjudicacao",
 }
+
+# Missing -> ValueError. The contract cannot be keyed, dated, priced or attributed without these.
+_REQUIRED_SOURCES = frozenset(
+    {
+        "idcontrato",
+        "Ano",
+        "adjudicante",
+        "adjudicatarios",
+        "precoContratual",
+        "dataPublicacao",
+        "dataCelebracaoContrato",
+        "tipoprocedimento",
+    }
+)
+# Missing -> null-filled with the treated dtype (drift is reported, ingest goes on).
+_OPTIONAL_SOURCES = frozenset(
+    {
+        "objectoContrato",
+        "descContrato",
+        "PrecoTotalEfetivo",
+        "precoBaseProcedimento",
+        "prazoExecucao",
+        "dataFechoContrato",
+        "tipoContrato",
+        "fundamentAjusteDireto",
+        "CPV",
+        "NUTs",
+        "concorrentes",
+    }
+)
+# Raw export columns we knowingly ignore (not drift). Everything else is "unknown".
+_KNOWN_UNUSED_SOURCES = frozenset(
+    {
+        "nAnuncio",
+        "TipoAnuncio",
+        "idINCM",
+        "idprocedimento",
+        "LocalExecucao",
+        "fundamentacao",
+        "ProcedimentoCentralizado",
+        "numAcordoQuadro",
+        "DescrAcordoQuadro",
+        "dataDecisaoAdjudicacao",
+        "regime",
+        "justifNReducEscrContrato",
+        "tipoFimContrato",
+        "CritMateriais",
+        "linkPecasProc",
+        "Observacoes",
+        "ContratEcologico",
+        "adjudicatarioPMEs",
+        "Lotes",
+        # Dropped by the portal in the 2026-11-15 republication; no longer in the treated schema.
+        "TipoCriterioAdjudicacao",
+        "CausasAlteraPrazo",
+        "CausasAlteraPreco",
+        "EntidadesConvidadas",
+        "IDAnuncio",
+        "Info",
+        "Ocorrencias",
+        "TipoMEC",
+        "compraConjunta",
+        "estadoContrato",
+        "precoEstimadoProc",
+        "ultActuliza",
+    }
+)
+_SOURCE_TO_TREATED = {src: dst for dst, src in _RENAMES.items()}
+
+
+@dataclass(frozen=True)
+class SchemaDrift:
+    missing_optional: tuple[str, ...] = ()  # sorted source names, null-filled
+    unknown: tuple[str, ...] = ()  # sorted raw columns neither consumed nor known-unused
+
+    def __bool__(self) -> bool:
+        return bool(self.missing_optional or self.unknown)
+
+    def as_dict(self) -> dict[str, list[str]]:
+        return {"missing_optional": list(self.missing_optional), "unknown": list(self.unknown)}
+
+
+def check_raw_columns(columns: Iterable[str]) -> SchemaDrift:
+    """Raise ValueError if a required source column is missing; else return the drift."""
+    have = list(columns)
+    present = set(have)
+    missing = sorted(_REQUIRED_SOURCES - present)
+    if missing:
+        raise ValueError(f"raw contracts lack columns {missing}; observed: {have}")
+    known = _REQUIRED_SOURCES | _OPTIONAL_SOURCES | _KNOWN_UNUSED_SOURCES | {"_src_year"}
+    return SchemaDrift(
+        missing_optional=tuple(sorted(_OPTIONAL_SOURCES - present)),
+        unknown=tuple(sorted(present - known)),
+    )
 
 
 def row_hash(columns: list[str]) -> pl.Expr:
@@ -122,9 +217,12 @@ def treat[F: (pl.DataFrame, pl.LazyFrame)](raw: F, *, min_value: float = MIN_VAL
     """
     lf = raw.lazy()
     have = lf.collect_schema().names()
-    missing = [src for src in _RENAMES.values() if src not in have]
-    if missing:
-        raise ValueError(f"raw contracts lack columns {missing}; observed: {have}")
+    drift = check_raw_columns(have)
+    if drift.missing_optional:
+        lf = lf.with_columns(
+            pl.lit(None, dtype=TREATED_SCHEMA[_SOURCE_TO_TREATED[src]]).alias(src)
+            for src in drift.missing_optional
+        )
 
     lf = lf.with_columns(unescape_html_entities(pl.col(c)) for c in _HTML_ENTITY_COLUMNS)
     typed = lf.select(

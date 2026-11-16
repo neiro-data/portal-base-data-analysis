@@ -34,7 +34,6 @@ CREATE UNLOGGED TABLE IF NOT EXISTS procurement.stg_contracts (
     "cpv"                       text,
     "nuts"                      text,
     "concorrentes"              text,
-    "TipoCriterioAdjudicacao"   text,
     "n_concorrentes"            bigint,
     "is_municipio"              boolean,
     "is_below_min_value"        boolean,

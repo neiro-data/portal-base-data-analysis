@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import logging
 from pathlib import Path
 
 import polars as pl
@@ -161,3 +163,51 @@ def test_entities_written_and_manifest_records_min_value(env: Env) -> None:
     assert raw_ingest.raw_years(env.raw) == [2025]
     manifest = (env.out.parent / "manifest.json").read_text()
     assert '"min_value": 25.0' in manifest
+
+
+def _manifest(env: Env) -> dict:
+    return json.loads((env.out.parent / "manifest.json").read_text())
+
+
+def test_drift_in_summary_manifest_and_log(env: Env, caplog: pytest.LogCaptureFixture) -> None:
+    frame = make_rows(2025, 6, start_id=200).drop("concorrentes")
+    write_workbook(env.source, 2025, frame.with_columns(novaColunaA=pl.lit("x")))
+    with caplog.at_level(logging.WARNING, logger="base_gov"):
+        s = env.run((2025,), at=T0)
+    assert s.drift[2025].missing_optional == ("concorrentes",)
+    assert s.drift[2025].unknown == ("novaColunaA",)
+    out = s.render()
+    assert "2025  missing optional (null-filled): concorrentes" in out
+    assert "2025  unknown upstream columns: novaColunaA" in out
+    assert _manifest(env)["treated"]["schema_drift"]["2025"] == {
+        "missing_optional": ["concorrentes"],
+        "unknown": ["novaColunaA"],
+    }
+    assert "raw year 2025: optional source columns missing" in caplog.text
+    assert "raw year 2025: upstream columns not consumed" in caplog.text
+
+
+def test_no_drift_renders_no_drift_section(env: Env) -> None:
+    s = env.run((2024, 2025), at=T0)
+    assert "schema drift" not in s.render()
+    assert _manifest(env)["treated"]["schema_drift"] == {
+        "2024": {"missing_optional": [], "unknown": []},
+        "2025": {"missing_optional": [], "unknown": []},
+    }
+
+
+def test_required_missing_in_one_year_raises(env: Env) -> None:
+    env.run((2024, 2025), at=T0)
+    pl.read_parquet(raw_ingest.raw_path(env.raw, 2024)).drop("precoContratual").write_parquet(
+        raw_ingest.raw_path(env.raw, 2024)
+    )
+    with pytest.raises(ValueError, match="raw year 2024"):
+        env.run(at=T1, rebuild=True)
+
+
+def test_null_filled_optional_marks_rows_updated_once(env: Env) -> None:
+    write_workbook(env.source, 2025, make_rows(2025, 6, start_id=200))
+    env.run((2025,), at=T0)
+    write_workbook(env.source, 2025, make_rows(2025, 6, start_id=200).drop("concorrentes"))
+    assert env.run((2025,), at=T1).updated == 6
+    assert env.run((2025,), at=T1).unchanged == 6

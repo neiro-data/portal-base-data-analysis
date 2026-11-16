@@ -59,6 +59,21 @@ works in two layers. **Raw:** each `data/source/contratos<YEAR>.xlsx` becomes
 is built from all raw years together. Contracts under EUR 10 are flagged
 (`is_below_min_value`), not dropped.
 
+Raw columns are required or optional. Required: `idcontrato`, `Ano`, `adjudicante`,
+`adjudicatarios`, `precoContratual`, `dataPublicacao`, `dataCelebracaoContrato`,
+`tipoprocedimento`. If one is missing in any year, the ingest fails. Optional: all other consumed
+columns. If one is missing, the treated column is null. The portal dropped
+`TipoCriterioAdjudicacao` in the 2026-11-15 republication (48 columns), so the treated schema
+and the staging table no longer carry it.
+
+Each run reports schema drift per year: optional columns that were null-filled, and upstream
+columns that nothing consumes. The report is in the ingest summary, in log warnings, and in
+`data/manifest.json` under `treated.schema_drift`. For an unknown column, decide: consume it, or
+add it to `_KNOWN_UNUSED_SOURCES` in `transform.py`.
+
+Trade-off: if the portal drops an optional column that had values, `row_hash` changes. The
+affected rows show as `updated` once (`updated_at` changes). Later runs show `unchanged`.
+
 `xlsx-analyze` and `xlsx-entities` still read one workbook with a row cap, default 1000. The
 uncapped read peaks near 2 to 4 GB RSS per workbook, because calamine materializes the whole sheet.
 
@@ -107,7 +122,8 @@ src/base_gov/           xlsx ingest, bulk ingest, entities/analysis helpers + th
 reports/                gitignored: PDF reports (`make report`), query-stats runs
 tests/                  pytest suite, no database required
 data/                   gitignored: source/ (xlsx), raw/ (raw parquet), contracts.parquet,
-                        entity parquets, manifest.json (download checksums)
+                        entity parquets, manifest.json (download checksums,
+                        treated ingest settings, schema drift)
 README.md               this file - what it is and the first run
 scripts-guide.md        every command, grouped by target
 SCHEMA.md               the data model reference
