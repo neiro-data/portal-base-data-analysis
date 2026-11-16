@@ -68,6 +68,12 @@ dropped, and `-` stays the no-NIF sentinel. The raw parquet keeps the original t
 **Drift guard.** Ingest fails, and keeps the previous output, if more than 1% of a year's
 adjudicantes have no parsed name or a dirty NIPC.
 
+**First ingest after consuming four upstream columns.** `estadoContrato`, `precoEstimadoProc`,
+`ultActuliza` (upstream typo) and `IDAnuncio` are now consumed optional columns, so every row
+shows as `updated` once (new hashed columns). On a warm database run `make init-db` before the
+next `ingest-postgres`, or the upsert fails on missing columns. `preco_estimado_proc` has
+negatives, zeros and values above 1e9; it is not cleaned.
+
 **First ingest after the format fix.** `row_hash` input changed, so every row shows as `updated`
 once. `first_ingested_at` is kept.
 

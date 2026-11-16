@@ -67,6 +67,7 @@ The fact table. The grain is one row per contract, keyed on `idcontrato`.
 | `prazo_execucao`, `adjudicatario_pmes` | `integer` | |
 | `preco_base_procedimento`, `tipo_procedimento`, `fundament_ajuste_direto` | `numeric(18,2)` / `text` | Added by 007. `tipo_procedimento` is indexed. |
 | `n_concorrentes`, `valor_por_dia` | `integer` / `numeric(18,2)` | Added by 007. Derived in the treated parquet. |
+| `estado_contrato`, `preco_estimado_proc`, `ultima_atualizacao`, `id_anuncio` | `text` / `numeric(18,2)` / `date` / `bigint` | Source columns `estadoContrato`, `precoEstimadoProc`, `ultActuliza` (upstream typo), `IDAnuncio`. Added in 002. `preco_estimado_proc` is not cleaned (negatives, zeros, outliers above 1e9). |
 | `is_municipio` | `boolean` | Added by 007. Partial index where true. |
 | `is_below_min_value` | `boolean` | Added by 007. The EUR 10 flag, see below. |
 | `row_hash` | `bigint` | Added by 007. Hash of the treated content columns, from the parquet. |

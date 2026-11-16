@@ -56,11 +56,13 @@ bin/ingest-contracts.sh --min-value 0                         # flag nothing
 Two layers. **Raw:** `data/source/contratos<YEAR>.xlsx` becomes `data/raw/contracts_raw_<YEAR>.parquet`,
 columns verbatim, one workbook in memory at a time. **Treated:** `data/contracts.parquet`, built
 from *all* raw years together (the fuzzy `adjudicante_key` is dataset-wide). It adds `ano`,
-`n_concorrentes`, `is_municipio`, `valor_por_dia`, `row_hash`, `first_ingested_at`,
+`n_concorrentes`, `is_municipio`, `valor_por_dia`, `estado_contrato`, `preco_estimado_proc`,
+`ultima_atualizacao`, `id_anuncio`, `row_hash`, `first_ingested_at`,
 `updated_at` and `is_below_min_value`.
 
 - Rows with `|preco_contratual| < --min-value` (default 10; null prices too) are **flagged, not
   dropped**. Filter with `~pl.col("is_below_min_value")`.
+- `ultima_atualizacao` is hashed: an upstream-only touch marks the row `updated`.
 - `row_hash` covers the treated content columns. `updated_at` moves only when it changes;
   `first_ingested_at` is set once. Re-running on unchanged input reports `new = 0, updated = 0`.
 - A repeated `idcontrato` keeps its last row (contracts are amended over time), so `ingested`

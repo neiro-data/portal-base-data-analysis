@@ -160,6 +160,36 @@ def test_staging_columns_match_treated_columns() -> None:
     assert set(staged) == set(TREATED_COLUMNS)
 
 
+def test_staging_column_order_matches_treated_columns() -> None:
+    assert _staging_columns() == TREATED_COLUMNS
+
+
+UPSTREAM_TREATED = ("estado_contrato", "preco_estimado_proc", "ultima_atualizacao", "id_anuncio")
+
+
+def test_002_declares_upstream_columns_in_create_and_alter() -> None:
+    text = (SQL_DIR / "002_schema.sql").read_text()
+    create = re.search(
+        r"CREATE TABLE IF NOT EXISTS procurement\.contracts \((.*?)\n\);", text, re.S
+    )
+    assert create is not None
+    for col in UPSTREAM_TREATED:
+        assert re.search(rf"^\s+{col}\s", create.group(1), re.M), col
+        assert re.search(rf"ADD COLUMN IF NOT EXISTS\s+{col}\s", text), col
+
+
+def test_every_inserted_column_is_in_do_update_set() -> None:
+    code = _sql_code(STAGE_SQL)
+    ins = re.search(
+        r"INSERT\s+INTO\s+procurement\.contracts\s*\((.*?)\)\s*SELECT", code, re.S | re.I
+    )
+    upd = re.search(r"DO\s+UPDATE\s+SET(.*?)\bWHERE\b", code, re.S | re.I)
+    assert ins is not None and upd is not None
+    inserted = {c.strip() for c in ins.group(1).split(",")} - {"idcontrato", "first_ingested_at"}
+    updated = set(re.findall(r"(\w+)\s*=\s*EXCLUDED\.", upd.group(1)))
+    assert inserted == updated
+
+
 def test_row_hash_is_signed_int64() -> None:
     # postgres bigint is signed; UInt64 would overflow COPY from parquet.
     assert TREATED_SCHEMA["row_hash"] == pl.Int64

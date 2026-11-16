@@ -41,7 +41,11 @@ CREATE TABLE IF NOT EXISTS procurement.contracts (
     n_concorrentes           integer,
     is_municipio             boolean NOT NULL DEFAULT false,
     is_below_min_value       boolean NOT NULL DEFAULT false,  -- the EUR 10 rule as a flag, never a delete
-    valor_por_dia            numeric(18, 2)
+    valor_por_dia            numeric(18, 2),
+    estado_contrato          text,            -- source col: estadoContrato
+    preco_estimado_proc      numeric(18, 2),  -- source col: precoEstimadoProc
+    ultima_atualizacao       date,            -- source col: ultActuliza (upstream typo)
+    id_anuncio               bigint           -- source col: IDAnuncio
 );
 
 -- Warm-volume upgrade: CREATE TABLE IF NOT EXISTS above is a no-op on an existing
@@ -70,7 +74,11 @@ ALTER TABLE procurement.contracts
     ADD COLUMN IF NOT EXISTS n_concorrentes          integer,
     ADD COLUMN IF NOT EXISTS is_municipio            boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS is_below_min_value      boolean NOT NULL DEFAULT false,
-    ADD COLUMN IF NOT EXISTS valor_por_dia           numeric(18, 2);
+    ADD COLUMN IF NOT EXISTS valor_por_dia           numeric(18, 2),
+    ADD COLUMN IF NOT EXISTS estado_contrato         text,
+    ADD COLUMN IF NOT EXISTS preco_estimado_proc     numeric(18, 2),
+    ADD COLUMN IF NOT EXISTS ultima_atualizacao      date,
+    ADD COLUMN IF NOT EXISTS id_anuncio              bigint;
 
 CREATE TABLE IF NOT EXISTS procurement.contract_adjudicatarios (
     idcontrato bigint NOT NULL REFERENCES procurement.contracts (idcontrato) ON DELETE CASCADE,

@@ -78,6 +78,10 @@ TREATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "nuts": pl.String,
     "concorrentes": pl.String,
     "n_concorrentes": pl.UInt32,
+    "estado_contrato": pl.String,
+    "preco_estimado_proc": pl.Float64,
+    "ultima_atualizacao": pl.Date,
+    "id_anuncio": pl.Int64,
     "is_municipio": pl.Boolean,
     "is_below_min_value": pl.Boolean,
     "row_hash": pl.Int64,
@@ -88,6 +92,10 @@ TIMESTAMP_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "updated_at": pl.Datetime("us", "UTC"),
 }
 TREATED_COLUMNS = [*TREATED_SCHEMA, *TIMESTAMP_SCHEMA]
+
+# Consuming a new upstream column: add it to TREATED_SCHEMA, _RENAMES, one of
+# _REQUIRED/_OPTIONAL_SOURCES, remove it from _KNOWN_UNUSED_SOURCES, add it to
+# sql/ingest/20_stage_contracts.sql (+ 002/upsert if modelled).
 
 # treated name <- source name, for the columns that are a plain rename + cast.
 _RENAMES = {
@@ -110,6 +118,10 @@ _RENAMES = {
     "cpv": "CPV",
     "nuts": "NUTs",
     "concorrentes": "concorrentes",
+    "estado_contrato": "estadoContrato",
+    "preco_estimado_proc": "precoEstimadoProc",
+    "ultima_atualizacao": "ultActuliza",  # upstream typo
+    "id_anuncio": "IDAnuncio",
 }
 
 # Missing -> ValueError. The contract cannot be keyed, dated, priced or attributed without these.
@@ -139,6 +151,10 @@ _OPTIONAL_SOURCES = frozenset(
         "CPV",
         "NUTs",
         "concorrentes",
+        "estadoContrato",
+        "precoEstimadoProc",
+        "ultActuliza",
+        "IDAnuncio",
     }
 )
 # Raw export columns we knowingly ignore (not drift). Everything else is "unknown".
@@ -168,14 +184,10 @@ _KNOWN_UNUSED_SOURCES = frozenset(
         "CausasAlteraPrazo",
         "CausasAlteraPreco",
         "EntidadesConvidadas",
-        "IDAnuncio",
         "Info",
         "Ocorrencias",
         "TipoMEC",
         "compraConjunta",
-        "estadoContrato",
-        "precoEstimadoProc",
-        "ultActuliza",
     }
 )
 _SOURCE_TO_TREATED = {src: dst for dst, src in _RENAMES.items()}
