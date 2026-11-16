@@ -26,14 +26,18 @@ parsed AS (
         (regexp_match(raw_segment, '^(\d{9})[\s-]*(.*)$')) AS m
     FROM segments
 ),
+-- DISTINCT ON: upstream occasionally repeats an NIPC within one cell (e.g.
+-- idcontrato 4801091 lists 980560241 under two different names). ON CONFLICT
+-- can't touch the same row twice in one statement, so keep the first entry.
 valid AS (
-    SELECT
+    SELECT DISTINCT ON (idcontrato, (m)[1])
         idcontrato,
         (m)[1] AS entity_id,
         nullif(trim((m)[2]), '') AS name,
         position::smallint AS position
     FROM parsed
     WHERE m IS NOT NULL
+    ORDER BY idcontrato, (m)[1], position
 )
 INSERT INTO procurement.contract_adjudicatarios (idcontrato, entity_id, name, position)
 SELECT idcontrato, entity_id, name, position FROM valid
