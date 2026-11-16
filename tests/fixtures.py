@@ -49,6 +49,10 @@ HEADER: dict[str, Any] = {
     "NUTs": pl.String,
     "Lotes": pl.String,
     "TipoCriterioAdjudicacao": pl.String,
+    "estadoContrato": pl.String,
+    "precoEstimadoProc": pl.Float64,
+    "ultActuliza": pl.Date,
+    "IDAnuncio": pl.Int64,
 }
 
 
@@ -95,6 +99,7 @@ def make_rows(
         concorrentes=["111111111 - A\n222222222 - B"] * n,
         Ano=[year] * n,
         NUTs=["PT18"] * n,
+        ultActuliza=[dt.date(year, 1, 3)] * n,
     )
     for col, value in overrides.items():
         data[col] = value if isinstance(value, list) else [value] * n

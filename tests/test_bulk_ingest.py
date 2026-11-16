@@ -240,3 +240,13 @@ def test_null_filled_optional_marks_rows_updated_once(env: Env) -> None:
     write_workbook(env.source, 2025, make_rows(2025, 6, start_id=200).drop("concorrentes"))
     assert env.run((2025,), at=T1).updated == 6
     assert env.run((2025,), at=T1).unchanged == 6
+
+
+def test_upstream_only_touch_marks_rows_updated(env: Env) -> None:
+    env.run((2025,), at=T0)
+    touched = make_rows(
+        2025, 6, start_id=200, ultActuliza=[dt.date(2026, 11, 1)] * 2 + [dt.date(2025, 1, 3)] * 4
+    )
+    write_workbook(env.source, 2025, touched)
+    s = env.run((2025,), at=T1)
+    assert (s.new, s.updated, s.unchanged) == (0, 2, 4)

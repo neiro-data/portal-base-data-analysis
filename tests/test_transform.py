@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from pathlib import Path
 from typing import Literal
@@ -74,6 +75,68 @@ def test_every_rename_source_classified_once() -> None:
     assert _REQUIRED_SOURCES | _OPTIONAL_SOURCES == set(_RENAMES.values())
     assert _REQUIRED_SOURCES & _OPTIONAL_SOURCES == set()
     assert _KNOWN_UNUSED_SOURCES.isdisjoint(_REQUIRED_SOURCES | _OPTIONAL_SOURCES)
+
+
+UPSTREAM_COLUMNS = {
+    "estadoContrato": "estado_contrato",
+    "precoEstimadoProc": "preco_estimado_proc",
+    "ultActuliza": "ultima_atualizacao",
+    "IDAnuncio": "id_anuncio",
+}
+
+
+def test_upstream_columns_are_consumed_optional_sources() -> None:
+    for src, dst in UPSTREAM_COLUMNS.items():
+        assert src in _OPTIONAL_SOURCES
+        assert src not in _KNOWN_UNUSED_SOURCES
+        assert _RENAMES[dst] == src
+
+
+def test_upstream_columns_flow_through_with_dtypes() -> None:
+    out = treat(
+        make_rows(
+            2025,
+            2,
+            estadoContrato="Em Anulação",
+            precoEstimadoProc=1234.5,
+            IDAnuncio=99,
+            ultActuliza=dt.date(2026, 5, 6),
+        )
+    )
+    assert out["estado_contrato"].to_list() == ["Em Anulação"] * 2
+    assert out["preco_estimado_proc"].to_list() == [1234.5] * 2
+    assert out["id_anuncio"].to_list() == [99] * 2
+    assert out["ultima_atualizacao"].to_list() == [dt.date(2026, 5, 6)] * 2
+    for dst in UPSTREAM_COLUMNS.values():
+        assert out[dst].dtype == TREATED_SCHEMA[dst]
+
+
+def test_mixed_raw_dtypes_across_years_are_cast_back() -> None:
+    # 2012/2013 (precoEstimadoProc) and 2015 (IDAnuncio) are String upstream.
+    as_str = make_rows(2013, 1).cast({"precoEstimadoProc": pl.String, "IDAnuncio": pl.String})
+    as_str = as_str.with_columns(
+        precoEstimadoProc=pl.lit("4500000"), IDAnuncio=pl.lit("57276"), idcontrato=pl.lit(1)
+    )
+    numeric = make_rows(2025, 1, start_id=2, precoEstimadoProc=10.5, IDAnuncio=7)
+    out = treat(pl.concat([as_str, numeric], how="diagonal_relaxed"))
+    assert dict(out.schema) == TREATED_SCHEMA
+    assert out["preco_estimado_proc"].to_list() == [4500000.0, 10.5]
+    assert out["id_anuncio"].to_list() == [57276, 7]
+
+
+@pytest.mark.parametrize("col", ["precoEstimadoProc", "IDAnuncio"])
+def test_non_numeric_string_in_upstream_numeric_column_raises(col: str) -> None:
+    # strict cast: fail loud on a future bad republication (pins current behaviour).
+    raw = make_rows(2025, 1).cast({col: pl.String}).with_columns(pl.lit("n/a").alias(col))
+    with pytest.raises(pl.exceptions.PolarsError):
+        treat(raw)
+
+
+def test_row_hash_tracks_ultima_atualizacao_and_estado_contrato() -> None:
+    base = treat(make_rows(2025, 1))["row_hash"][0]
+    touched = treat(make_rows(2025, 1, ultActuliza=dt.date(2026, 11, 1)))["row_hash"][0]
+    rectified = treat(make_rows(2025, 1, estadoContrato="Em Rectificação"))["row_hash"][0]
+    assert len({base, touched, rectified}) == 3
 
 
 def test_fixture_header_has_no_drift() -> None:
