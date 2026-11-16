@@ -52,10 +52,10 @@ The fact table. The grain is one row per contract, keyed on `idcontrato`.
 | Column | Type | Note |
 | --- | --- | --- |
 | `idcontrato` | `bigint` | Primary key. |
-| `adjudicante` | `text` | Raw packed value, `"NIPC name"`. |
+| `adjudicante` | `text` | Canonical packed value, `"NIPC - Name"`, one line per entry. The raw `key=value` format is normalised to it. |
 | `adjudicante_nipc` | `text` | Derived from `adjudicante`. Indexed. |
 | `adjudicante_name` | `text` | Derived from `adjudicante`. |
-| `adjudicatarios` | `text` | Raw packed value, separated by `;`. |
+| `adjudicatarios` | `text` | Canonical packed value, `"NIPC - Name"`, one entry per line. |
 | `objecto_contrato` | `text` | Source column `objectoContrato`. |
 | `desc_contrato` | `text` | Source column `descContrato`. |
 | `preco_contratual` | `numeric(18,2)` | Source column `precoContratual`. |

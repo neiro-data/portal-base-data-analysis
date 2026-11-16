@@ -1,7 +1,9 @@
 import polars as pl
+import pytest
 
 from base_gov.entities import (
     canonical_names,
+    canonical_packed,
     classify_nipc,
     entity_key,
     explode_entities,
@@ -19,11 +21,78 @@ def test_normalize_name() -> None:
     assert normalize_name("  Câmara  Municipal de S. João ") == "camara municipal de s joao"
 
 
-def test_split_packed_sentinel_and_dash_in_name() -> None:
-    df = pl.DataFrame({"a": ["- - Município de Gouveia", "501413197 - Foo - Bar"]})
+_KV = "nifEntContrato={nif}|descEntContrato={name}"
+CANONICAL_CASES = [
+    (
+        "nifEntContrato=501413197|descEntContrato=Universidade do Porto - Faculdade de Engenharia"
+        "|codPaisEntContrato=PRT|NUTsCod=PT11A|NUTsDesc=Porto",
+        "501413197 - Universidade do Porto - Faculdade de Engenharia",
+    ),
+    (
+        "nifEntContrato=501000001|descEntContrato=SUCH | Serviço de Utilização Comum dos Hospitais"
+        "|codPaisEntContrato=PRT|adjudicatarioPME=Nao",
+        "501000001 - SUCH | Serviço de Utilização Comum dos Hospitais",
+    ),
+    (
+        "nifEntContrato=501000002|descEntContrato=Feel the Business – Recursos Humanos"
+        " | Comunicação & Marketing|adjudicatarioPME=Sim",
+        "501000002 - Feel the Business – Recursos Humanos | Comunicação & Marketing",
+    ),
+    ("nifEntContrato=501000003|descEntContrato=WORK=FUN, LDA", "501000003 - WORK=FUN, LDA"),
+    (
+        "nifEntContrato=501000004|descEntContrato=Fergrupo, Construções, SA|tipoEntidade=X",
+        "501000004 - Fergrupo, Construções, SA",
+    ),
+    (
+        "nifEntContrato=-|descEntContrato=Miguel Ricardo de Melo Moreira",
+        "- - Miguel Ricardo de Melo Moreira",
+    ),
+    ("nifEntContrato=-", "-"),
+    (
+        "nifEntContrato=517304660|descEntContrato=Sítio dos Arados Lda|adjudicatarioPME=Sim",
+        "517304660 - Sítio dos Arados Lda",
+    ),
+    (
+        "nifEntContrato=516 871 498|descEntContrato=X|codPaisEntContrato=PRT",
+        "516 871 498 - X",
+    ),
+    (
+        "nifEntContrato=500000001|descEntContrato=A\nnifEntContrato=-|descEntContrato=B",
+        "500000001 - A\n- - B",
+    ),
+    ("506609553 - Município de X", "506609553 - Município de X"),
+    ("-", "-"),
+    (None, None),
+]
+
+
+@pytest.mark.parametrize(("raw", "expected"), CANONICAL_CASES)
+def test_canonical_packed(raw: str | None, expected: str | None) -> None:
+    out = pl.DataFrame({"a": [raw]}, schema={"a": pl.String}).select(canonical_packed(pl.col("a")))
+    assert out["a"][0] == expected
+
+
+@pytest.mark.parametrize("packed", [True, False], ids=["packed", "kv"])
+def test_split_packed_sentinel_and_dash_in_name(packed: bool) -> None:
+    cells = (
+        ["- - Município de Gouveia", "501413197 - Foo - Bar"]
+        if packed
+        else [
+            "nifEntContrato=-|descEntContrato=Município de Gouveia",
+            "nifEntContrato=501413197|descEntContrato=Foo - Bar|NUTsCod=PT1",
+        ]
+    )
+    df = pl.DataFrame({"a": cells}).with_columns(canonical_packed(pl.col("a")))
     out = df.with_columns(split_packed("a", prefix="x"))
     assert out["x_nipc"].to_list() == ["-", "501413197"]
     assert out["x_name"].to_list() == ["Município de Gouveia", "Foo - Bar"]
+
+
+def test_split_packed_takes_first_entry_only() -> None:
+    df = pl.DataFrame({"a": ["500000001 - Município de VFX\n500000002 - SMAS"]})
+    out = df.with_columns(split_packed("a", prefix="x"))
+    assert out["x_nipc"][0] == "500000001"
+    assert out["x_name"][0] == "Município de VFX"
 
 
 def test_explode_multi_entity_cell() -> None:

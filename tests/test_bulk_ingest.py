@@ -165,6 +165,35 @@ def test_entities_written_and_manifest_records_min_value(env: Env) -> None:
     assert '"min_value": 25.0' in manifest
 
 
+def test_kv_format_ingest_parses_adjudicante_and_entities(tmp_path: Path) -> None:
+    e = Env(tmp_path)
+    write_workbook(e.source, 2025, make_rows(2025, 3, party_format="kv"))
+    e.run((2025,), at=T0)
+    assert e.treated()["adjudicante_name"].to_list() == ["Município de Montemor-o-Novo"] * 3
+    ents = pl.read_parquet(e.adjudicantes)
+    assert ents["entity_id"].to_list() == ["506609553"]
+
+
+def test_drift_guard_raises_and_keeps_previous_output(tmp_path: Path) -> None:
+    e = Env(tmp_path)
+    write_workbook(e.source, 2025, make_rows(2025, 3))
+    e.run((2025,), at=T0)
+    before = e.out.read_bytes()
+    write_workbook(e.source, 2025, make_rows(2025, 3, adjudicante="foo=bar|x=y"))
+    # "foo=bar|x=y" has no " - ", so name is null
+    with pytest.raises(ValueError, match="2025"):
+        e.run((2025,), at=T1)
+    assert e.out.read_bytes() == before
+
+
+def test_check_adjudicante_parse_threshold() -> None:
+    ok = pl.DataFrame({"_src_year": [2024], "ingested": [100], "adj_unparsed": [1]})
+    bulk_ingest.check_adjudicante_parse(ok)
+    bad = pl.DataFrame({"_src_year": [2024], "ingested": [100], "adj_unparsed": [2]})
+    with pytest.raises(ValueError, match="2024"):
+        bulk_ingest.check_adjudicante_parse(bad)
+
+
 def _manifest(env: Env) -> dict:
     return json.loads((env.out.parent / "manifest.json").read_text())
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 
@@ -52,8 +52,24 @@ HEADER: dict[str, Any] = {
 }
 
 
+KV_ADJUDICANTE = (
+    "nifEntContrato=506609553|descEntContrato=Município de Montemor-o-Novo"
+    "|codPaisEntContrato=PRT|NUTsCod=PT1C2|NUTsDesc=Alentejo Central"
+)
+KV_ADJUDICATARIO = (
+    "nifEntContrato=517304660|descEntContrato=Sítio dos Arados Lda"
+    "|codPaisEntContrato=PRT|adjudicatarioPME=Sim"
+)
+
+
 def make_rows(
-    year: int, n: int, *, start_id: int = 1, price: float = 1000.0, **overrides: Any
+    year: int,
+    n: int,
+    *,
+    start_id: int = 1,
+    price: float = 1000.0,
+    party_format: Literal["packed", "kv"] = "packed",
+    **overrides: Any,
 ) -> pl.DataFrame:
     """`n` rows with the full header. `overrides` are constants or length-n lists per column."""
     data: dict[str, Any] = {c: [None] * n for c in HEADER}
@@ -63,8 +79,14 @@ def make_rows(
         tipoprocedimento=["Ajuste Direto Regime Geral"] * n,
         objectoContrato=["Serviços diversos"] * n,
         descContrato=["Descrição"] * n,
-        adjudicante=["506609553 - Município de Montemor-o-Novo"] * n,
-        adjudicatarios=["517304660 - Sítio dos Arados Lda"] * n,
+        adjudicante=[
+            KV_ADJUDICANTE if party_format == "kv" else "506609553 - Município de Montemor-o-Novo"
+        ]
+        * n,
+        adjudicatarios=[
+            KV_ADJUDICATARIO if party_format == "kv" else "517304660 - Sítio dos Arados Lda"
+        ]
+        * n,
         dataPublicacao=[dt.date(year, 1, 2)] * n,
         dataCelebracaoContrato=[dt.date(year, 1, 1)] * n,
         precoContratual=[price + i for i in range(n)],

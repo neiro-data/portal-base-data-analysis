@@ -1,5 +1,9 @@
 """NIPC-first entity keys for the packed ``"<NIPC> - <Name>"`` columns of the contracts export.
 
+Two input formats are accepted: the packed one and the 2026-11 ``key=value|key=value`` one
+(``nifEntContrato=...|descEntContrato=...``). ``canonical_packed`` normalises the latter to the
+former once, so every parser here only sees packed text.
+
 An entity is identified by its NIPC. Name similarity is used only for entries whose NIPC is the
 ``-`` sentinel (no NIF), and never to merge entries that carry a (possibly dirty) NIPC.
 """
@@ -16,6 +20,10 @@ NO_NIPC = "-"
 SIMILARITY_THRESHOLD = 92.0
 _BLOCK_WIDTH = 8  # names are only compared within the same len(name) // _BLOCK_WIDTH bucket
 _NAME_KEY_PREFIX = "NAME::"
+KV_PREFIX = "nifEntContrato="
+_KV_NIF_RE = r"^nifEntContrato=([^|]*)"
+# lazy up to the next "|<Key>=" or end: names may contain "|" and "=" (e.g. "SUCH | Serviço…")
+_KV_DESC_RE = r"\|descEntContrato=(.*?)(?:\|[A-Za-z][A-Za-z0-9]*=|$)"
 
 
 def normalize_name(s: str) -> str:
@@ -30,9 +38,32 @@ def _split_entry(entry: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
     return parts.struct.field("field_0"), parts.struct.field("field_1")
 
 
+def canonical_packed(expr: pl.Expr) -> pl.Expr:
+    """Rewrite a key=value party cell to packed "<nif> - <desc>" lines; other cells pass through."""
+    entry = pl.element()
+    converted = (
+        expr.str.split(ENTITY_SEP)
+        .list.eval(
+            pl.concat_str(
+                [
+                    entry.str.extract(_KV_NIF_RE).str.strip_chars(),
+                    entry.str.extract(_KV_DESC_RE).str.strip_chars(),
+                ],
+                separator=" - ",
+                ignore_nulls=True,
+            )
+        )
+        .list.join(ENTITY_SEP)
+    )
+    return pl.when(expr.str.starts_with(KV_PREFIX)).then(converted).otherwise(expr)
+
+
 def split_packed(col: str, *, prefix: str) -> list[pl.Expr]:
-    """Split a single-valued packed cell into ``<prefix>_nipc`` (raw) and ``<prefix>_name``."""
-    nipc, name = _split_entry(pl.col(col))
+    """Split the first entry of a packed cell into ``<prefix>_nipc`` (raw) and ``<prefix>_name``.
+
+    Further entries (joint purchases) are ignored here; the raw column keeps them all.
+    """
+    nipc, name = _split_entry(pl.col(col).str.split(ENTITY_SEP).list.first())
     return [nipc.alias(f"{prefix}_nipc"), name.alias(f"{prefix}_name")]
 
 
