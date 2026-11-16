@@ -7,6 +7,8 @@ from pathlib import Path
 import polars as pl
 
 from base_gov.entities_db import adjudicantes, adjudicatarios, read_entities, write_entities
+from base_gov.transform import party_expr
+from tests.fixtures import make_rows
 
 ROWS = [
     {
@@ -87,3 +89,14 @@ def test_write_entities_is_idempotent(tmp_path: Path) -> None:
     extra = pl.DataFrame({"entity_id": ["123456789"], "name": ["Nova Entidade"]})
     rows = write_entities(extra, path)
     assert rows == 2
+
+
+def test_kv_parties_give_clean_ids_and_names() -> None:
+    raw = make_rows(2025, 2, party_format="kv").rename({"idcontrato": "idcontrato"})
+    parties = raw.select(party_expr("adjudicante"), party_expr("adjudicatarios"), "idcontrato")
+    adj = adjudicantes(parties)
+    assert adj["entity_id"].to_list() == ["506609553"]
+    assert adj["name"].to_list() == ["Município de Montemor-o-Novo"]
+    ata = adjudicatarios(parties)
+    assert ata["entity_id"].to_list() == ["517304660"]
+    assert ata["name"].to_list() == ["Sítio dos Arados Lda"]

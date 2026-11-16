@@ -13,18 +13,19 @@ import html
 import polars as pl
 
 from base_gov.contracts import is_municipio_expr
-from base_gov.entities import entity_key, split_packed
+from base_gov.entities import canonical_packed, entity_key, split_packed
 from base_gov.stats import MIN_VALUE, below_min_value_expr, value_per_day
 
 # `.hash()` is stable for a given polars version; an upgrade re-hashes every row once, which the
 # ingest summary reports as `updated`.
 HASH_EXCLUDE = frozenset({"row_hash", "first_ingested_at", "updated_at", "is_below_min_value"})
 
-# Free-text columns (adjudicante/adjudicatarios names, objecto/desc) that carry HTML-escaped text
-# (named entities like `&amp;` and numeric ones like `&#8722;`) in the raw export. Unescaping
-# happens once here, before adjudicante/adjudicatarios get split into individual entities, so
-# every downstream name (parquet, entities_*, bridge) is clean.
-_HTML_ENTITY_COLUMNS = ("adjudicante", "adjudicatarios", "objectoContrato", "descContrato")
+# Columns that carry HTML-escaped text (named entities like `&amp;` and numeric ones like
+# `&#8722;`) in the raw export. Unescaping happens once here, before adjudicante/adjudicatarios get
+# split into individual entities, so every downstream name (parquet, entities_*, bridge) is clean.
+# Party columns are first normalised to packed "NIPC - Name" (see `party_expr`).
+_PARTY_COLUMNS = ("adjudicante", "adjudicatarios")
+_TEXT_COLUMNS = ("objectoContrato", "descContrato")
 
 
 def _unescape_html(s: str | None) -> str | None:
@@ -39,6 +40,15 @@ def _unescape_html(s: str | None) -> str | None:
 def unescape_html_entities(expr: pl.Expr) -> pl.Expr:
     """Decode HTML entities observed in the raw export's free-text columns."""
     return expr.map_elements(_unescape_html, return_dtype=pl.String)
+
+
+def party_expr(col: str) -> pl.Expr:
+    """Canonical packed, HTML-unescaped party column.
+
+    Canonicalised before unescaping so a decoded `&#124;` cannot become a separator.
+    """
+    return unescape_html_entities(canonical_packed(pl.col(col)))
+
 
 TREATED_SCHEMA: dict[str, pl.DataType | type[pl.DataType]] = {
     "idcontrato": pl.Int64,
@@ -126,7 +136,10 @@ def treat[F: (pl.DataFrame, pl.LazyFrame)](raw: F, *, min_value: float = MIN_VAL
     if missing:
         raise ValueError(f"raw contracts lack columns {missing}; observed: {have}")
 
-    lf = lf.with_columns(unescape_html_entities(pl.col(c)) for c in _HTML_ENTITY_COLUMNS)
+    lf = lf.with_columns(
+        *(party_expr(c) for c in _PARTY_COLUMNS),
+        *(unescape_html_entities(pl.col(c)) for c in _TEXT_COLUMNS),
+    )
     typed = lf.select(
         *(pl.col(src).cast(TREATED_SCHEMA[dst]).alias(dst) for dst, src in _RENAMES.items())
     )

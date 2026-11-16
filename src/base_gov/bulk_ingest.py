@@ -23,10 +23,13 @@ import polars as pl
 
 from base_gov import entities_db, raw_ingest
 from base_gov.stats import MIN_VALUE
-from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, treat, unescape_html_entities
+from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, party_expr, treat
 from base_gov.xlsx_ingest import ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID
 
 logger = logging.getLogger("base_gov")
+
+# Ingest fails when more than this share of a year is unparsed (null name or dirty NIPC).
+MAX_UNPARSED_ADJUDICANTE_SHARE = 0.01
 
 _TS = pl.Datetime("us", "UTC")
 _TRACKED = ("idcontrato", "row_hash", *TIMESTAMP_SCHEMA)
@@ -199,6 +202,23 @@ def _raw_counts(raw_dir: Path, years: Sequence[int]) -> dict[int, int]:
     }
 
 
+def check_adjudicante_parse(
+    counts: pl.DataFrame, max_share: float = MAX_UNPARSED_ADJUDICANTE_SHARE
+) -> None:
+    """Raise if any year's `adj_unparsed / ingested` exceeds `max_share` (raw format drift)."""
+    bad = [
+        f"{r['_src_year']}: {r['adj_unparsed'] / r['ingested']:.1%} "
+        f"({r['adj_unparsed']:_}/{r['ingested']:_}) > {max_share:.1%}"
+        for r in counts.sort("_src_year").iter_rows(named=True)
+        if r["ingested"] and r["adj_unparsed"] / r["ingested"] > max_share
+    ]
+    if bad:
+        raise ValueError(
+            "adjudicante unparsed in " + "; ".join(bad) + "; raw format changed? "
+            "See base_gov.entities.canonical_packed"
+        )
+
+
 def ingest(
     source_dir: Path,
     raw_dir: Path,
@@ -265,9 +285,16 @@ def ingest(
                 (pl.col("_status") == "updated").sum().alias("updated"),
                 (pl.col("_status") == "unchanged").sum().alias("unchanged"),
                 pl.col("is_below_min_value").sum().alias("below_min"),
+                (
+                    pl.col("adjudicante_name").is_null()
+                    | (pl.col("adjudicante_key_source") == "nipc_dirty")
+                )
+                .sum()
+                .alias("adj_unparsed"),
             )
             .collect()
         )
+        check_adjudicante_parse(counts)
         pl.scan_parquet(staged).select(TREATED_COLUMNS).sink_parquet(tmp)
         tmp.replace(out)
     finally:
@@ -284,8 +311,8 @@ def ingest(
     parties = (
         deduped.select(ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID)
         .with_columns(
-            unescape_html_entities(pl.col(ADJUDICANTE)),
-            unescape_html_entities(pl.col(ADJUDICATARIOS)),
+            party_expr(ADJUDICANTE),
+            party_expr(ADJUDICATARIOS),
         )
         .collect()
     )

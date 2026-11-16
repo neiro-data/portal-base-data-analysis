@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import polars as pl
 import pytest
@@ -20,8 +21,9 @@ from base_gov.transform import (
 from tests.fixtures import make_rows
 
 
-def test_treat_pins_columns_and_dtypes() -> None:
-    out = treat(make_rows(2025, 5))
+@pytest.mark.parametrize("fmt", ["packed", "kv"])
+def test_treat_pins_columns_and_dtypes(fmt: Literal["packed", "kv"]) -> None:
+    out = treat(make_rows(2025, 5, party_format=fmt))
     assert out.columns == list(TREATED_SCHEMA)
     assert dict(out.schema) == TREATED_SCHEMA
     assert not set(TIMESTAMP_SCHEMA) & set(out.columns)
@@ -30,7 +32,24 @@ def test_treat_pins_columns_and_dtypes() -> None:
     assert out["adjudicante_key"][0] == "506609553"
     assert out["n_concorrentes"][0] == 2
     assert out["is_municipio"][0] is True
+    assert out["adjudicante_name"][0] == "Município de Montemor-o-Novo"
+    assert out["adjudicante"][0] == "506609553 - Município de Montemor-o-Novo"
+    assert out["adjudicatarios"][0] == "517304660 - Sítio dos Arados Lda"
     assert out["valor_por_dia"][0] == pytest.approx(1000.0 / 30)
+
+
+def test_kv_and_packed_rows_treat_identically() -> None:
+    kv = treat(make_rows(2025, 3, party_format="kv"))
+    packed = treat(make_rows(2025, 3, party_format="packed"))
+    assert kv.drop("row_hash").equals(packed.drop("row_hash"))
+    assert kv["row_hash"].to_list() == packed["row_hash"].to_list()
+
+
+def test_kv_html_entities_unescaped_after_canonicalisation() -> None:
+    cell = "nifEntContrato=501000001|descEntContrato=A &amp; B &#124; C|codPaisEntContrato=PRT"
+    out = treat(make_rows(2025, 1, adjudicante=cell))
+    assert out["adjudicante_name"][0] == "A & B | C"
+    assert out["adjudicante"][0] == "501000001 - A & B | C"
 
 
 def test_treat_is_lazy_in_lazy_out_and_matches_eager() -> None:

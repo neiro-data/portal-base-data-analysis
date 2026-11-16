@@ -59,6 +59,18 @@ works in two layers. **Raw:** each `data/source/contratos<YEAR>.xlsx` becomes
 is built from all raw years together. Contracts under EUR 10 are flagged
 (`is_below_min_value`), not dropped.
 
+**Party formats.** `adjudicante` and `adjudicatarios` can arrive packed (`NIPC - Name`) or, since
+the 2026-11 republication, as `key=value|key=value` (`nifEntContrato=...|descEntContrato=...`).
+Both become packed text in the treated file. Extra keys (country, NUTs, PME, entity type) are
+dropped, and `-` stays the no-NIF sentinel. The raw parquet keeps the original text. Only the first
+`adjudicante` entry feeds `adjudicante_nipc` / `_name` / `_key`.
+
+**Drift guard.** Ingest fails, and keeps the previous output, if more than 1% of a year's
+adjudicantes have no parsed name or a dirty NIPC.
+
+**First ingest after the format fix.** `row_hash` input changed, so every row shows as `updated`
+once. `first_ingested_at` is kept.
+
 `xlsx-analyze` and `xlsx-entities` still read one workbook with a row cap, default 1000. The
 uncapped read peaks near 2 to 4 GB RSS per workbook, because calamine materializes the whole sheet.
 
