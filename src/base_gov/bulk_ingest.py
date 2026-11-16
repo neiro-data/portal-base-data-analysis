@@ -23,7 +23,14 @@ import polars as pl
 
 from base_gov import entities_db, raw_ingest
 from base_gov.stats import MIN_VALUE
-from base_gov.transform import TIMESTAMP_SCHEMA, TREATED_COLUMNS, party_expr, treat
+from base_gov.transform import (
+    TIMESTAMP_SCHEMA,
+    TREATED_COLUMNS,
+    SchemaDrift,
+    check_raw_columns,
+    party_expr,
+    treat,
+)
 from base_gov.xlsx_ingest import ADJUDICANTE, ADJUDICATARIOS, CONTRACT_ID
 
 logger = logging.getLogger("base_gov")
@@ -58,6 +65,7 @@ class IngestSummary:
     adjudicatarios_total: int = 0
     min_value: float = MIN_VALUE
     ingested_at: datetime | None = field(default=None)
+    drift: dict[int, SchemaDrift] = field(default_factory=dict)
 
     def _total(self, attr: str) -> int:
         return sum(getattr(y, attr) for y in self.per_year)
@@ -131,7 +139,18 @@ class IngestSummary:
             return "  ".join([first, *rest])
 
         rule = "-" * len(line(table[0]))
-        return "\n".join([line(table[0]), *map(line, table[1:-1]), rule, line(table[-1])])
+        out = [line(table[0]), *map(line, table[1:-1]), rule, line(table[-1])]
+        if any(self.drift.values()):
+            out += ["", "schema drift:"]
+            for y in sorted(self.drift):
+                d = self.drift[y]
+                if d.missing_optional:
+                    out.append(
+                        f"  {y}  missing optional (null-filled): {', '.join(d.missing_optional)}"
+                    )
+                if d.unknown:
+                    out.append(f"  {y}  unknown upstream columns: {', '.join(d.unknown)}")
+        return "\n".join(out)
 
 
 def _utc(ts: datetime) -> datetime:
@@ -183,14 +202,19 @@ def merge_tracking(
     )
 
 
-def _write_manifest_treated(manifest: Path, min_value: float) -> None:
+def _write_manifest_treated(
+    manifest: Path, min_value: float, drift: dict[int, SchemaDrift]
+) -> None:
     data = json.loads(manifest.read_text()) if manifest.exists() else {}
     old = data.get("treated", {}).get("min_value")
     if old is not None and old != min_value:
         logger.info(
             "min_value changed %s -> %s: flags refresh, row hashes are unaffected", old, min_value
         )
-    data["treated"] = {"min_value": min_value}
+    data["treated"] = {
+        "min_value": min_value,
+        "schema_drift": {str(y): drift[y].as_dict() for y in sorted(drift)},
+    }
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -217,6 +241,18 @@ def check_adjudicante_parse(
             "adjudicante unparsed in " + "; ".join(bad) + "; raw format changed? "
             "See base_gov.entities.canonical_packed"
         )
+
+
+def _raw_drift(raw_dir: Path, years: Sequence[int]) -> dict[int, SchemaDrift]:
+    """Per-year schema check of the raw parquet files (schema only, no data read)."""
+    drift: dict[int, SchemaDrift] = {}
+    for y in years:
+        names = pl.scan_parquet(raw_ingest.raw_path(raw_dir, y)).collect_schema().names()
+        try:
+            drift[y] = check_raw_columns(names)
+        except ValueError as exc:
+            raise ValueError(f"raw year {y}: {exc}") from exc
+    return drift
 
 
 def ingest(
@@ -250,6 +286,18 @@ def ingest(
     if not all_years:
         raise FileNotFoundError(f"no raw parquet files in {raw_dir}; ingest a workbook first")
     read = _raw_counts(raw_dir, all_years)
+    drift = _raw_drift(raw_dir, all_years)
+    for y, d in drift.items():
+        if d.missing_optional:
+            logger.warning(
+                "raw year %d: optional source columns missing, null-filled: %s",
+                y,
+                ", ".join(d.missing_optional),
+            )
+        if d.unknown:
+            logger.warning(
+                "raw year %d: upstream columns not consumed (unknown): %s", y, ", ".join(d.unknown)
+            )
 
     src = pl.concat(
         [
@@ -323,7 +371,7 @@ def ingest(
         entities_db.adjudicatarios(parties), adjudicatarios_out
     )
 
-    _write_manifest_treated(manifest or out.parent / "manifest.json", min_value)
+    _write_manifest_treated(manifest or out.parent / "manifest.json", min_value, drift)
     superseded = sum(y.superseded for y in per_year)
     if superseded:
         logger.info(
@@ -336,4 +384,5 @@ def ingest(
         adjudicatarios_total=adjudicatarios_total,
         min_value=min_value,
         ingested_at=run_ts,
+        drift=drift,
     )

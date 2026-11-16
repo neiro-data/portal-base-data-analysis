@@ -12,13 +12,20 @@ import pytest
 from base_gov.entities import entity_key, split_packed
 from base_gov.stats import below_min_value_expr, filter_min_value
 from base_gov.transform import (
+    _KNOWN_UNUSED_SOURCES,
+    _OPTIONAL_SOURCES,
+    _RENAMES,
+    _REQUIRED_SOURCES,
+    _SOURCE_TO_TREATED,
     HASH_EXCLUDE,
     TIMESTAMP_SCHEMA,
     TREATED_SCHEMA,
+    SchemaDrift,
+    check_raw_columns,
     row_hash,
     treat,
 )
-from tests.fixtures import make_rows
+from tests.fixtures import HEADER, make_rows
 
 
 @pytest.mark.parametrize("fmt", ["packed", "kv"])
@@ -60,7 +67,51 @@ def test_treat_is_lazy_in_lazy_out_and_matches_eager() -> None:
 
 def test_treat_rejects_missing_raw_columns() -> None:
     with pytest.raises(ValueError, match="lack columns"):
-        treat(make_rows(2025, 2).drop("CPV"))
+        treat(make_rows(2025, 2).drop("precoContratual"))
+
+
+def test_every_rename_source_classified_once() -> None:
+    assert _REQUIRED_SOURCES | _OPTIONAL_SOURCES == set(_RENAMES.values())
+    assert _REQUIRED_SOURCES & _OPTIONAL_SOURCES == set()
+    assert _KNOWN_UNUSED_SOURCES.isdisjoint(_REQUIRED_SOURCES | _OPTIONAL_SOURCES)
+
+
+def test_fixture_header_has_no_drift() -> None:
+    drift = check_raw_columns(HEADER)
+    assert drift == SchemaDrift()
+    assert not drift
+
+
+@pytest.mark.parametrize("col", sorted(_REQUIRED_SOURCES))
+def test_missing_required_source_raises(col: str) -> None:
+    with pytest.raises(ValueError, match="lack columns"):
+        treat(make_rows(2025, 2).drop(col))
+
+
+@pytest.mark.parametrize("src", sorted(_OPTIONAL_SOURCES))
+def test_missing_optional_source_null_filled_with_treated_dtype(src: str) -> None:
+    dst = _SOURCE_TO_TREATED[src]
+    out = treat(make_rows(2026, 2).drop(src))
+    assert out[dst].dtype == TREATED_SCHEMA[dst]
+    assert out[dst].null_count() == 2
+    assert dict(out.schema) == TREATED_SCHEMA
+
+
+def test_check_raw_columns_reports_unknown_and_missing_optional() -> None:
+    cols = [c for c in HEADER if c != "NUTs"] + [
+        "novaColunaB",
+        "novaColunaA",
+    ]
+    assert check_raw_columns(cols) == SchemaDrift(
+        missing_optional=("NUTs",),
+        unknown=("novaColunaA", "novaColunaB"),
+    )
+
+
+def test_lazy_contract_holds_with_dropped_optional_column() -> None:
+    raw = make_rows(2025, 3).drop("NUTs")
+    assert isinstance(treat(raw.lazy()), pl.LazyFrame)
+    assert treat(raw.lazy()).collect().equals(treat(raw))
 
 
 def test_null_concorrentes_stays_null() -> None:
