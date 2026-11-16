@@ -1051,7 +1051,14 @@ def run_query_stats(
         )
         logger.info("%d scenarios x %d reps", len(scenarios), repeat)
         collect(
-            be, http, scenarios, repeat=repeat, cold=cold, now=now, directory=directory, sink=rows,
+            be,
+            http,
+            scenarios,
+            repeat=repeat,
+            cold=cold,
+            now=now,
+            directory=directory,
+            sink=rows,
             fast=fast,
         )
         explain_slowest(be, rows, out / "plans", explain_top)
